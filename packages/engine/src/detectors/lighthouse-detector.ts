@@ -21,9 +21,13 @@ function nextId(): string {
   return `lh-${Date.now().toString(36)}-${counter}`;
 }
 
-/** Audit Lighthouse được map thành finding (khi score < 0.9). */
+/**
+ * Audit Lighthouse được map thành finding (khi score < 0.9).
+ * Lighthouse 13 gộp các audit performance legacy thành "insights" — ID cũ
+ * (render-blocking-resources, uses-long-cache-ttl…) không còn xuất hiện trong LHR.
+ */
 const AUDIT_TITLES: Record<string, { title: string; detail: string; fixHint?: string }> = {
-  'render-blocking-resources': {
+  'render-blocking-insight': {
     title: 'Resources chặn render lần đầu',
     detail: 'CSS/JS trong <head> chưa có async/defer khiến trình duyệt phải chờ tải xong mới được paint.',
     fixHint: 'Thêm defer/async cho script, preconnect cho origin quan trọng, inline CSS critical.',
@@ -38,27 +42,17 @@ const AUDIT_TITLES: Record<string, { title: string; detail: string; fixHint?: st
     detail: 'Stylesheet tải về nhưng selector không match element nào trên trang.',
     fixHint: 'Tách CSS theo component/route, xoá CSS chết, dùng PurgeCSS cho utility framework.',
   },
-  'uses-text-compression': {
-    title: 'Chưa bật nén text (gzip/brotli)',
-    detail: 'Response text trả về không nén, đội thêm nhiều lần dung lượng truyền.',
-    fixHint: 'Bật brotli/gzip ở server hoặc CDN cho text/html, js, css, svg, json.',
+  'document-latency-insight': {
+    title: 'Độ trễ tài liệu (nén/redirect/server chậm)',
+    detail: 'Response trả về không nén, đi qua redirect nhiều vòng hoặc server phản hồi chậm.',
+    fixHint: 'Bật brotli/gzip ở server hoặc CDN cho text/html, js, css, svg, json; giảm redirect; tối ưu TTFB.',
   },
-  'uses-responsive-images': {
-    title: 'Ảnh kích thước lớn hơn hiển thị',
-    detail: 'Ảnh decode ở kích thước lớn hơn nhiều so với vùng hiển thị trên màn hình.',
-    fixHint: 'Dùng srcset/sizes hoặc dịch vụ resize ảnh theo viewport.',
+  'image-delivery-insight': {
+    title: 'Ảnh chưa tối ưu (kích thước/định dạng)',
+    detail: 'Ảnh decode lớn hơn vùng hiển thị hoặc dùng JPEG/PNG thay vì WebP/AVIF.',
+    fixHint: 'Dùng srcset/sizes, dịch vụ resize theo viewport, chuyển sang WebP/AVIF với fallback.',
   },
-  'modern-image-formats': {
-    title: 'Ảnh chưa dùng định dạng thế hệ mới',
-    detail: 'JPEG/PNG thay vì WebP/AVIF làm nặng ảnh đáng kể ở cùng chất lượng.',
-    fixHint: 'Chuyển ảnh sang WebP/AVIF, giữ fallback định dạng cũ.',
-  },
-  'offscreen-images': {
-    title: 'Ảnh ngoài màn hình được lazy-load',
-    detail: 'Ảnh dưới fold vẫn tải ngay từ đầu, cạnh tranh băng thông với nội dung trên fold.',
-    fixHint: 'Thêm loading="lazy" cho ảnh ngoài viewport đầu tiên.',
-  },
-  'uses-long-cache-ttl': {
+  'cache-insight': {
     title: 'Cache ttl ngắn hoặc thiếu',
     detail: 'Static asset không có Cache-Control dài hạn, người dùng quay lại phải tải lại toàn bộ.',
     fixHint: 'Cache-Control: max-age=31536000, immutable cho asset có hash trong tên file.',
@@ -73,17 +67,17 @@ const AUDIT_TITLES: Record<string, { title: string; detail: string; fixHint?: st
     detail: 'Tổng thời gian main thread xử lý vượt ngưỡng, ảnh hưởng trực tiếp tới INP/TBT.',
     fixHint: 'Giảm work JS đồng bộ, ưu tiên code-split và defer script không critical.',
   },
-  'third-party-summary': {
+  'third-parties-insight': {
     title: 'Third-party code chiếm nhiều thời gian',
     detail: 'Script bên thứ ba (analytics, ads, chat…) chặn hoặc cạnh tranh main thread.',
     fixHint: 'Load third-party bằng worker/defer, đánh giá lại script không thật sự cần.',
   },
-  'font-display': {
+  'font-display-insight': {
     title: 'Font chưa khai báo font-display',
     detail: 'Text có thể bị ẩn trong lúc chờ font tải (FOIT).',
     fixHint: 'Dùng font-display: swap (hoặc optional) trong @font-face.',
   },
-  'dom-size': {
+  'dom-size-insight': {
     title: 'DOM quá lớn',
     detail: 'Số node DOM lớn làm chậm mọi thao tác style/layout và tăng memory.',
     fixHint: 'Virtualize list dài, giảm node wrapper không cần thiết.',
@@ -93,7 +87,7 @@ const AUDIT_TITLES: Record<string, { title: string; detail: string; fixHint?: st
     detail: 'Network payload vượt mốc, đặc biệt tốn kém trên mạng di động.',
     fixHint: 'Nén ảnh, lazy-load, tách payload theo hành vi người dùng.',
   },
-  'largest-contentful-paint-element': {
+  'lcp-breakdown-insight': {
     title: 'Phần tử LCP được tối ưu chưa tốt',
     detail: 'Chi tiết breakdown cho thấy phần tử LCP bị delay bởi tài nguyên hoặc render-blocking.',
     fixHint: 'Preload ảnh hero, ưu tiên tải phần tử LCP, giảm render-blocking resources.',
@@ -106,9 +100,17 @@ function severityOf(score: number): Finding['severity'] {
   return 'info';
 }
 
-function impactOf(audit: { details?: { overallSavingsMs?: number; overallSavingsBytes?: number } }): string | undefined {
-  const ms = audit.details?.overallSavingsMs;
-  const bytes = audit.details?.overallSavingsBytes;
+// LH 13: audit legacy giữ overallSavingsMs/Bytes ở top-level; insight audits đưa
+// con số tiết kiệm vào details.summary dưới dạng wastedMs/wastedBytes.
+function impactOf(audit: {
+  details?: {
+    overallSavingsMs?: number;
+    overallSavingsBytes?: number;
+    summary?: { wastedMs?: number; wastedBytes?: number };
+  };
+}): string | undefined {
+  const ms = audit.details?.overallSavingsMs ?? audit.details?.summary?.wastedMs;
+  const bytes = audit.details?.overallSavingsBytes ?? audit.details?.summary?.wastedBytes;
   const parts: string[] = [];
   if (ms && ms > 0) parts.push(`tiết kiệm ~${Math.round(ms / 100) / 10}s`);
   if (bytes && bytes > 1024) parts.push(`~${Math.round(bytes / 1024)}KB`);

@@ -49,7 +49,7 @@ Paste một URL, một repo GitHub hoặc trỏ tới thư mục source trên m�
 ## Tính năng
 
 - 🔍 **3 chế độ quét** — URL trực tiếp, repo GitHub (tải tarball, hỗ trợ repo private), hoặc thư mục source local (có trình duyệt thư mục tích hợp, không cần gõ tay đường dẫn).
-- ⚡ **Runtime audit thật** — Lighthouse 12 chạy trên Chrome hệ thống (mobile throttling 4G / desktop), đo đủ Core Web Vitals: LCP, CLS, TBT, FCP, TTFB, Speed Index.
+- ⚡ **Runtime audit thật** — Lighthouse 13 chạy trên Chrome hệ thống (mobile throttling 4G / desktop), đo đủ Core Web Vitals: LCP, CLS, TBT, FCP, TTFB, Speed Index.
 - 🔁 **Phát hiện lãng phí re-render** — shim React DevTools hook qua Playwright, đếm render theo từng component, bắt cả **render loop xảy ra khi trang idle**.
 - 🧠 **Phát hiện memory leak** — đo DOM Nodes / JSEventListeners / Heap qua CDP, nhiều vòng tương tác có force GC giữa các vòng; tăng đơn điệu = leak.
 - 📦 **Phân tích tĩnh bundle** — parse config Vite/Webpack/Next, phát hiện import nặng nguyên khối (lodash, moment…), thư viện nặng chưa lazy-load, barrel file, đo kích thước gzip của `dist/`.
@@ -85,7 +85,7 @@ pnpm monorepo, TypeScript toàn bộ.
 ```
 ├── packages/engine/        @wpsa/engine — scanner engine độc lập
 │   ├── detectors/
-│   │   ├── lighthouse-detector.ts   Lighthouse 12 (Chrome hệ thống): CWV, perf/SEO/best-practices
+│   │   ├── lighthouse-detector.ts   Lighthouse 13 (Chrome hệ thống): CWV, perf/SEO/best-practices
 │   │   ├── rerender-detector.ts     React DevTools hook qua Playwright: đếm render/component
 │   │   ├── memory-detector.ts       CDP metrics + force GC nhiều vòng: phát hiện leak
 │   │   ├── security-detector.ts     Security headers (CSP/HSTS/...) + SEO meta từ HTML
