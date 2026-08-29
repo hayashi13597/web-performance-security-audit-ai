@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createScanJob, pruneOldJobs } from '@/lib/job-store';
+import { createScanJob, jobTarget, listRecentScans, pruneOldJobs } from '@/lib/job-store';
 import type { ScanRequest } from '@wpsa/engine';
 
 export const runtime = 'nodejs';
@@ -20,6 +20,19 @@ function normalizeUrl(raw: string): string {
   const trimmed = raw.trim();
   if (!trimmed) return trimmed;
   return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+}
+
+/** Lịch sử scan gần nhất (job lưu SQLite nên sống qua restart). */
+export async function GET(): Promise<NextResponse> {
+  const scans = listRecentScans(20).map((j) => ({
+    id: j.id,
+    status: j.status,
+    mode: j.request.mode,
+    target: jobTarget(j.request),
+    aiConfigured: j.aiConfigured,
+    createdAt: j.createdAt,
+  }));
+  return NextResponse.json({ scans });
 }
 
 export async function POST(req: Request): Promise<NextResponse> {

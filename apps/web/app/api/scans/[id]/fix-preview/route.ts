@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { FixPlan } from '@wpsa/engine';
 import { loadEngine } from '@/lib/engine';
-import { getScanJob } from '@/lib/job-store';
+import { getScanJob, updateScanJob } from '@/lib/job-store';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -49,7 +49,7 @@ export async function POST(
 
   try {
     const plan: FixPlan = await generateFixPlan(findings, job.report.sourceDir, config);
-    job.lastFixPlan = plan;
+    updateScanJob(id, { lastFixPlan: plan });
     return NextResponse.json(plan);
   } catch (err) {
     return NextResponse.json(

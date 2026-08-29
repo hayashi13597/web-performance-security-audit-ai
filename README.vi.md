@@ -97,9 +97,10 @@ pnpm monorepo, TypeScript toàn bộ.
 │   ├── app/page.tsx                 Form quét 3 tab: URL | repo GitHub | thư mục local
 │   ├── app/scan/[id]/page.tsx       Báo cáo: gauge, CWV, biểu đồ, findings, diff view
 │   ├── components/FolderPickerDialog.tsx  Dialog duyệt thư mục cho chế độ local
-│   ├── lib/job-store.ts             Job store in-memory (chạy background)
+│   ├── lib/job-store.ts             Job store lưu SQLite (lịch sử sống qua restart)
 │   └── API routes:
 │       ├── POST /api/scans                    Tạo job scan (chạy background)
+│       ├── GET  /api/scans                    Lịch sử các lần scan gần đây
 │       ├── GET  /api/scans/[id]               Trạng thái + báo cáo (poll ~1.5s)
 │       ├── POST /api/scans/[id]/fix-preview   AI sinh preview fix (có diff)
 │       ├── POST /api/scans/[id]/pull-request  Tạo PR với các fix đã chọn
@@ -111,7 +112,7 @@ pnpm monorepo, TypeScript toàn bộ.
 
 | Thành phần | Yêu cầu |
 |---|---|
-| Node.js | ≥ 20 |
+| Node.js | ≥ 22.13 (`node:sqlite` built-in dùng để lưu lịch sử scan) |
 | pnpm | ≥ 9 |
 | Trình duyệt | Chrome hoặc Edge đã cài (Lighthouse dùng Chrome hệ thống, không tải Chrome riêng) |
 | Hệ điều hành | Đã phát triển và kiểm thử trên Windows 10; engine thuần Node nên chạy được trên macOS/Linux |
@@ -169,6 +170,10 @@ AI_BASE_URL=https://open.bigmodel.cn/api/paas/v4   # GLM; đổi thành api.open
 AI_API_KEY=...
 AI_MODEL=glm-4.6
 PORT=3000
+
+# Tuỳ chọn — job store:
+#WPSA_DB_PATH=D:\duong\dan\wpsa-jobs.db   # mặc định: apps/web/.data/wpsa-jobs.db
+#WPSA_JOB_TTL_HOURS=6                     # số giờ giữ job (mặc định 6)
 ```
 
 Bất kỳ endpoint **OpenAI-compatible** nào (`/chat/completions` + Bearer key) đều chạy được.
@@ -245,12 +250,12 @@ E2E đã verify: scan `examples/leaky-app` (local + live) bắt đủ 4 nhóm l�
 | Tạo PR trả **404 Not Found** | Hai nguyên nhân thường gặp: (1) branch gốc gõ sai / không tồn tại; (2) PAT fine-grained thiếu quyền *Contents* hoặc *Pull requests* read/write, hoặc repo không nằm trong *Repository access* — GitHub trả 404 thay vì 403. |
 | Tải repo lỗi giải nén | Tarball vượt giới hạn 200MB hoặc URL repo sai định dạng. |
 | Tên component trên biểu đồ bị rút gọn (`nZ`, `C`) | Target là **production build** — React xoá tên function ở bản prod. Quét bản dev build sẽ có tên đầy đủ. |
-| Mất lịch sử scan sau khi restart | Job lưu **in-memory** (MVP) — xem [Lộ trình](#lộ-trình). |
+| Lịch sử scan biến mất / job cũ báo lỗi "restart giữa chừng" | Job lưu trong SQLite (`apps/web/.data/wpsa-jobs.db`) nên sống qua restart — job đang chạy khi server tắt sẽ bị đánh dấu lỗi. Job đã xong được dọn sau 6 tiếng (chỉnh bằng `WPSA_JOB_TTL_HOURS`). |
 | Không thấy nút sinh fix AI | Chưa cấu hình `AI_API_KEY` trong `.env` — thêm xong nhớ restart app. |
 
 ## Lộ trình
 
-- [ ] Lưu job vào SQLite thay vì in-memory (giữ lịch sử qua restart)
+- [x] Lưu job vào SQLite thay vì in-memory (giữ lịch sử qua restart)
 - [ ] GitHub App / OAuth thay cho việc dán PAT tay
 - [ ] Docker image chạy 1 lệnh
 - [ ] CLI độc lập (scan không cần dashboard)

@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { FolderPickerDialog } from '@/components/FolderPickerDialog';
+import { RecentScans } from '@/components/RecentScans';
 
 type Tab = 'url' | 'repo' | 'local';
 
@@ -200,6 +201,8 @@ export default function HomePage() {
           </button>
         </div>
       </div>
+
+      <RecentScans />
 
       <p className="mt-6 text-center text-xs text-slate-600">
         Scan mất ~1-3 phút (Lighthouse + phiên tương tác Playwright + đo memory nhiều vòng).
