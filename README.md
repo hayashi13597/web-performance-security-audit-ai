@@ -50,7 +50,7 @@ Paste a URL, a GitHub repo, or point to a local source folder — WPSA runs Ligh
 ## Features
 
 - 🔍 **Three scan modes** — a direct URL, a GitHub repo (tarball download, private repo support), or a local source folder (with a built-in folder picker, no path typing required).
-- ⚡ **Real runtime auditing** — Lighthouse 12 on the system Chrome (mobile 4G throttling / desktop), full Core Web Vitals: LCP, CLS, TBT, FCP, TTFB, Speed Index.
+- ⚡ **Real runtime auditing** — Lighthouse 13 on the system Chrome (mobile 4G throttling / desktop), full Core Web Vitals: LCP, CLS, TBT, FCP, TTFB, Speed Index.
 - 🔁 **Wasteful re-render detection** — a React DevTools hook shim through Playwright, per-component render counting, catches even **render loops that fire while the page is idle**.
 - 🧠 **Memory leak detection** — DOM Nodes / JSEventListeners / Heap via CDP across multiple interaction rounds with forced GC in between; monotonic growth = leak.
 - 📦 **Static bundle analysis** — parses Vite/Webpack/Next configs, detects whole-library imports (lodash, moment…), heavy libraries that aren't lazy-loaded, barrel files; measures gzip sizes in `dist/`.
@@ -86,7 +86,7 @@ A pnpm monorepo, TypeScript throughout.
 ```
 ├── packages/engine/        @wpsa/engine — standalone scanning engine
 │   ├── detectors/
-│   │   ├── lighthouse-detector.ts   Lighthouse 12 (system Chrome): CWV, perf/SEO/best-practices
+│   │   ├── lighthouse-detector.ts   Lighthouse 13 (system Chrome): CWV, perf/SEO/best-practices
 │   │   ├── rerender-detector.ts     React DevTools hook via Playwright: per-component render counts
 │   │   ├── memory-detector.ts       CDP metrics + forced GC across rounds: leak detection
 │   │   ├── security-detector.ts     Security headers (CSP/HSTS/...) + SEO meta from HTML
