@@ -1,0 +1,17 @@
+{
+  "name": "wpsa-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Web Performance & Security Audit AI - quét URL/repo, phát hiện lãng phí re-render, bundle to, memory leak, vi phạm security/SEO, sinh PR fix 1-click",
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "dev": "pnpm --filter @wpsa/engine build && pnpm --filter web dev",
+    "start": "pnpm --filter web start",
+    "fixture:build": "pnpm --filter leaky-app build",
+    "fixture:preview": "pnpm --filter leaky-app preview"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  }
+}
