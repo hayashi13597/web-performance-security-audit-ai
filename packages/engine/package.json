@@ -1,0 +1,30 @@
+{
+  "name": "@wpsa/engine",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "chrome-launcher": "^1.1.2",
+    "diff": "^7.0.0",
+    "lighthouse": "^12.6.0",
+    "octokit": "^5.0.3",
+    "playwright": "^1.54.0"
+  },
+  "devDependencies": {
+    "@types/diff": "^7.0.0",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
+  }
+}
