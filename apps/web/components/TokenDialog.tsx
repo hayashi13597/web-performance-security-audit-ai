@@ -18,12 +18,23 @@ export function TokenDialog({
   const [repo, setRepo] = useState(defaultRepo);
   const [token, setToken] = useState('');
   const [baseBranch, setBaseBranch] = useState('');
+  const [session, setSession] = useState<{ authenticated: boolean; login?: string } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    fetch('/api/auth/session')
+      .then((res) => res.json())
+      .then((d: { authenticated?: boolean; login?: string }) =>
+        setSession({ authenticated: d.authenticated === true, login: d.login }),
+      )
+      .catch(() => setSession({ authenticated: false }));
+  }, []);
 
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
 
+  const signedIn = session?.authenticated === true;
   const inputClass =
     'w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 outline-none focus:border-sky-500';
 
@@ -46,10 +57,19 @@ export function TokenDialog({
             <span className="mb-1 block text-xs font-medium text-slate-300">Repo đích (owner/name)</span>
             <input ref={inputRef} className={inputClass} placeholder="owner/repo" value={repo} onChange={(e) => setRepo(e.target.value)} />
           </label>
-          <label className="block">
-            <span className="mb-1 block text-xs font-medium text-slate-300">GitHub token</span>
-            <input className={inputClass} type="password" placeholder="github_pat_… / ghp_…" value={token} onChange={(e) => setToken(e.target.value)} />
-          </label>
+
+          {signedIn ? (
+            <div className="rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-xs text-sky-200">
+              ✓ Đang dùng phiên GitHub của <span className="font-semibold">{session?.login}</span> — không cần
+              dán token. Muốn dùng PAT khác thì đăng xuất ở trang chủ.
+            </div>
+          ) : (
+            <label className="block">
+              <span className="mb-1 block text-xs font-medium text-slate-300">GitHub token</span>
+              <input className={inputClass} type="password" placeholder="github_pat_… / ghp_…" value={token} onChange={(e) => setToken(e.target.value)} />
+            </label>
+          )}
+
           <label className="block">
             <span className="mb-1 block text-xs font-medium text-slate-300">
               Branch gốc <span className="text-slate-500">(để trống = default branch)</span>
@@ -68,7 +88,7 @@ export function TokenDialog({
           </button>
           <button
             onClick={() => onSubmit(repo.trim(), token.trim(), baseBranch.trim())}
-            disabled={busy || !repo.trim() || !token.trim()}
+            disabled={busy || !repo.trim() || (!signedIn && !token.trim())}
             className="flex-1 rounded-lg bg-sky-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-sky-400 disabled:opacity-40"
           >
             {busy ? 'Đang tạo PR…' : 'Tạo PR'}

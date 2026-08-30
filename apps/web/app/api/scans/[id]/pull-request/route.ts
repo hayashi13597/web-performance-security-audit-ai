@@ -1,5 +1,7 @@
+import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import type { FixSuggestion } from '@wpsa/engine';
+import { GITHUB_SESSION_COOKIE, getSession } from '@/lib/github-session';
 import { loadEngine } from '@/lib/engine';
 import { getScanJob } from '@/lib/job-store';
 
@@ -35,8 +37,14 @@ export async function POST(
   } catch {
     return NextResponse.json({ error: 'Body không phải JSON hợp lệ' }, { status: 400 });
   }
-  if (!body.token?.trim()) {
-    return NextResponse.json({ error: 'Thiếu GitHub token (PAT)' }, { status: 400 });
+  // Token: PAT dán tay, hoặc access token từ phiên GitHub OAuth (chỉ nằm trong RAM)
+  const sessionToken = getSession((await cookies()).get(GITHUB_SESSION_COOKIE)?.value)?.token;
+  const token = body.token?.trim() || sessionToken;
+  if (!token) {
+    return NextResponse.json(
+      { error: 'Thiếu GitHub token — dán PAT hoặc bấm "Đăng nhập với GitHub" trên trang chủ.' },
+      { status: 400 },
+    );
   }
 
   const targetRepo =
@@ -91,7 +99,7 @@ export async function POST(
   try {
     const result = await createFixPR({
       repo: targetRepo,
-      token: body.token.trim(),
+      token,
       baseBranch: body.baseBranch,
       title: `wpsa: fix ${fixes.length} performance/security findings`,
       fixes,
@@ -102,9 +110,10 @@ export async function POST(
     });
     return NextResponse.json(result);
   } catch (err) {
-    return NextResponse.json(
-      { error: `Tạo PR thất bại: ${err instanceof Error ? err.message : String(err)}` },
-      { status: 502 },
-    );
+    const msg = err instanceof Error ? err.message : String(err);
+    const hint = /\b401\b/.test(msg)
+      ? ' — GitHub từ chối token; nếu đang dùng phiên OAuth, hãy đăng nhập lại.'
+      : '';
+    return NextResponse.json({ error: `Tạo PR thất bại: ${msg}${hint}` }, { status: 502 });
   }
 }

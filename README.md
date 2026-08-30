@@ -50,14 +50,14 @@ Paste a URL, a GitHub repo, or point to a local source folder — WPSA runs Ligh
 
 ## Features
 
-- 🔍 **Three scan modes** — a direct URL, a GitHub repo (tarball download, private repo support), or a local source folder (with a built-in folder picker, no path typing required).
+- 🔍 **Three scan modes** — a direct URL, a GitHub repo (tarball download, private repo support; signed in? pick one of your own repos from a searchable list instead of typing the URL), or a local source folder (with a built-in folder picker, no path typing required).
 - ⚡ **Real runtime auditing** — Lighthouse 13 on the system Chrome (mobile 4G throttling / desktop), full Core Web Vitals: LCP, CLS, TBT, FCP, TTFB, Speed Index.
 - 🔁 **Wasteful re-render detection** — a React DevTools hook shim through Playwright, per-component render counting, catches even **render loops that fire while the page is idle**.
 - 🧠 **Memory leak detection** — DOM Nodes / JSEventListeners / Heap via CDP across multiple interaction rounds with forced GC in between; monotonic growth = leak.
 - 📦 **Static bundle analysis** — parses Vite/Webpack/Next configs, detects whole-library imports (lodash, moment…), heavy libraries that aren't lazy-loaded, barrel files; measures gzip sizes in `dist/`.
 - 🔐 **Security headers + SEO** — CSP, HSTS, X-Frame-Options, nosniff, Referrer/Permissions-Policy, COOP; title/description/viewport/canonical/OG/lang/h1/img-alt + robots.txt.
 - 🤖 **AI-generated fixes** — any **OpenAI-compatible** endpoint works: GLM, OpenAI, DeepSeek, local Ollama… Produces fix plans as full files + reviewable diffs.
-- 🚀 **One-click Pull Request** — creates a branch, commits every selected fix, opens a PR with a summary via the GitHub REST API. The token lives for exactly one request and is never stored anywhere.
+- 🚀 **One-click Pull Request** — creates a branch, commits every selected fix, opens a PR with a summary via the GitHub REST API. Sign in with GitHub (OAuth) instead of pasting a PAT — access tokens live only in server RAM, never on disk.
 - 📋 **Copy-prompt fix** — available for **every scan mode** (URL, GitHub repo, local folder): generates a ready-to-paste prompt describing the selected findings so you can fix the issues with your own AI tool (Claude Code, Cursor, Copilot…) right in your working copy. Repo/folder scans also attach the related source files. Works with **no AI key configured**.
 - 🇻🇳 **Vietnamese dashboard** — dark theme, stage-by-stage scan progress, reports with score gauges, color-thresholded CWV cards, and render/component charts.
 
@@ -101,13 +101,19 @@ A pnpm monorepo, TypeScript throughout.
 │   ├── app/scan/[id]/page.tsx       Report: gauges, CWV, charts, findings, diff view
 │   ├── components/FolderPickerDialog.tsx  Folder browser dialog for local mode
 │   ├── lib/job-store.ts             SQLite-backed job store (history survives restarts)
+│   ├── lib/github-session.ts        GitHub OAuth sessions (access token in RAM only)
 │   └── API routes:
 │       ├── POST /api/scans                    Create a scan job (runs in background)
 │       ├── GET  /api/scans                    Recent scan history
 │       ├── GET  /api/scans/[id]               Status + report (poll ~1.5s)
 │       ├── POST /api/scans/[id]/fix-preview   AI-generate a fix preview (with diffs)
 │       ├── POST /api/scans/[id]/fix-prompt    Build a copy-ready fix prompt for your own AI tool (every scan mode)
-│       ├── POST /api/scans/[id]/pull-request  Create a PR from the selected fixes
+│       ├── POST /api/scans/[id]/pull-request  Create a PR from the selected fixes (OAuth session or PAT)
+│       ├── GET  /api/auth/github/start        OAuth sign-in: redirect to GitHub
+│       ├── GET  /api/auth/github/callback     OAuth callback: code → token (RAM session)
+│       ├── POST /api/auth/github/logout       End the GitHub session
+│       ├── GET  /api/auth/session             Sign-in state for the UI (never returns the token)
+│       ├── GET  /api/github/repos             Repos of the signed-in account (repo picker)
 │       └── GET  /api/fs                       List drives/folders for the FolderPicker
 └── examples/leaky-app/     Vite+React app with intentional issues (demo + E2E tests)
 ```
@@ -140,6 +146,21 @@ pnpm dev            # web app at http://localhost:3000
 
 Open [http://localhost:3000](http://localhost:3000), pick one of the three scan tabs and hit **Start scan**. Runtime scans take about 1–3 minutes depending on the target; progress is shown stage by stage.
 
+### Optional: sign in with GitHub (OAuth)
+
+Scan private repos and open PRs without pasting a PAT. One-time setup:
+
+1. Go to [github.com/settings/developers](https://github.com/settings/developers) → **New OAuth App**
+2. Homepage URL: `http://localhost:3000` — Authorization callback URL: `http://localhost:3000/api/auth/github/callback`
+3. Copy the Client ID / Client Secret into `.env` at the repo root:
+   ```env
+   GITHUB_CLIENT_ID=...
+   GITHUB_CLIENT_SECRET=...
+   ```
+4. Restart the app, then click **Đăng nhập với GitHub** at the top of the dashboard.
+
+The access token lives only in server memory for 8 hours (or until the server restarts) and is never written to disk or the database. Without this config, the manual PAT input still works exactly as before.
+
 ## Demo with an intentionally broken fixture
 
 The repo ships with `examples/leaky-app` — a Vite + React app that **intentionally contains every class of issue** (whole-library lodash/moment imports, a barrel file, listeners that are never removed, a state-update loop…) so you can see WPSA in action without an external target:
@@ -160,7 +181,7 @@ Reference results (E2E-verified, ~25 seconds): a Lighthouse score + CWV, a **cri
 | Mode | Input | Static analysis | Runtime (Lighthouse + re-renders + memory) |
 |---|---|---|---|
 | **URL** | Any URL | Security headers + SEO | ✅ |
-| **GitHub repo** | `https://github.com/owner/repo[/tree/branch]` (downloads a tarball ≤ 200MB; private repos need a token, pasted in the form) | ✅ | Only with an extra `liveUrl` |
+| **GitHub repo** | `https://github.com/owner/repo[/tree/branch]` (downloads a tarball ≤ 200MB; private repos need a GitHub sign-in or a token) | ✅ | Only with an extra `liveUrl` |
 | **Local folder** | Absolute path (or picked via the dialog) | ✅ | Only with an extra `liveUrl` |
 
 Shared parameters: `formFactor` (`mobile` default / `desktop`), `memoryRounds` (3–6, default 3).
@@ -189,7 +210,7 @@ Any **OpenAI-compatible** endpoint (`/chat/completions` + Bearer key) works.
 1. Scan finishes → the report shows CWV, Lighthouse scores, the render/component chart, findings by category.
 2. Tick the findings you want fixed (critical + warning are preselected) → **🤖 Generate AI fix preview**.
 3. Review the per-file diffs, deselect anything you don't want.
-4. **Create Pull Request** → enter the repo (`owner/name`) + a **GitHub PAT** → the tool creates a `wpsa/audit-fix-YYYYMMDD` branch, one commit with all fixes, and opens a PR with a summary.
+4. **Create Pull Request** → enter the repo (`owner/name`) → the tool uses your GitHub sign-in (OAuth) or a pasted **GitHub PAT** → it creates a `wpsa/audit-fix-YYYYMMDD` branch, one commit with all fixes, and opens a PR with a summary.
 5. Review the diff on GitHub → merge.
 
 Required PAT permissions:
@@ -199,7 +220,7 @@ Required PAT permissions:
 | **Fine-grained** (recommended) | *Contents: Read and write* + *Pull requests: Read and write*; the repo must be in *Repository access* |
 | Classic | the `repo` scope |
 
-🔒 The token lives for exactly one request and is never written to any file, log, or database.
+🔒 OAuth access tokens live only in server RAM (8h, gone on restart); a pasted PAT lives for exactly one request. Neither is ever written to any file, log, or database.
 
 ## Copy-prompt fix flow (bring your own AI)
 
@@ -223,7 +244,12 @@ This flow needs **no `AI_API_KEY`** — prompt building is plain templating + fi
 | `GET` | `/api/scans/[id]` | Status + report (poll ~1.5s) |
 | `POST` | `/api/scans/[id]/fix-preview` | AI-generate a fix preview with diffs (requires an AI key) |
 | `POST` | `/api/scans/[id]/fix-prompt` | Build a copy-ready fix prompt for your own AI tool — every scan mode (repo/folder scans can attach source files) |
-| `POST` | `/api/scans/[id]/pull-request` | Create a PR from the selected fixes (requires a PAT) |
+| `POST` | `/api/scans/[id]/pull-request` | Create a PR from the selected fixes (OAuth session or PAT in body) |
+| `GET` | `/api/auth/github/start` | OAuth sign-in: redirect to GitHub's authorize page |
+| `GET` | `/api/auth/github/callback` | OAuth callback: exchange `code` → token, create RAM session |
+| `POST` | `/api/auth/github/logout` | End the GitHub session |
+| `GET` | `/api/auth/session` | Sign-in state for the UI (`{ configured, authenticated, login, avatarUrl }` — never the token) |
+| `GET` | `/api/github/repos?page=` | Repos of the signed-in GitHub account (newest push first, 100/page — powers the repo picker) |
 | `GET` | `/api/fs?path=` | List drives/folders (used by the FolderPicker) |
 
 ```bash
@@ -258,7 +284,7 @@ curl -X POST localhost:3000/api/scans/<id>/pull-request \
 ## Testing
 
 ```bash
-pnpm test           # vitest: security/SEO + bundle detectors + prompt builder (19 engine + 12 web tests)
+pnpm test           # vitest: security/SEO + bundle detectors + prompt builder + OAuth session (23 engine + 27 web tests)
 pnpm build          # typecheck the whole workspace
 ```
 
@@ -275,11 +301,14 @@ E2E verified: scanning `examples/leaky-app` (local + live) catches all 4 issue g
 | Component names in the chart are minified (`nZ`, `C`) | The target is a **production build** — React strips function names in prod. Scanning a dev build gives full names. |
 | Scan history is gone / an old job errors with "Server đã restart giữa chừng scan" | Jobs are stored in SQLite (`apps/web/.data/wpsa-jobs.db`) and survive restarts — jobs that were still running when the server stopped are marked as errored. Finished jobs are pruned after 6h (tune via `WPSA_JOB_TTL_HOURS`). |
 | The AI fix button doesn't appear | `AI_API_KEY` isn't set in `.env` — restart the app after adding it. |
+| The "Đăng nhập với GitHub" button doesn't appear | `GITHUB_CLIENT_ID`/`GITHUB_CLIENT_SECRET` aren't set in `.env` — restart the app after adding them. |
+| GitHub sign-in fails with "Đổi authorization code thất bại" | Wrong Client Secret, or the registered callback URL doesn't match the actual one (`http://localhost:3000/api/auth/github/callback` — custom port? set `WPSA_PUBLIC_URL` in `.env`). |
+| PR creation returns **401** after OAuth sign-in | The session token was revoked on GitHub or the session expired (8h / server restarted) — sign in again. |
 
 ## Roadmap
 
 - [x] Persist jobs to SQLite instead of in-memory (keep history across restarts)
-- [ ] GitHub App / OAuth instead of pasting a PAT
+- [x] GitHub App / OAuth instead of pasting a PAT (OAuth App sign-in; access token kept in server RAM only)
 - [ ] One-command Docker image
 - [ ] Standalone CLI (scan without the dashboard)
 - [ ] PDF/HTML report export

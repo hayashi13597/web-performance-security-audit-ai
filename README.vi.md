@@ -48,14 +48,14 @@ Paste một URL, một repo GitHub hoặc trỏ tới thư mục source trên m�
 
 ## Tính năng
 
-- 🔍 **3 chế độ quét** — URL trực tiếp, repo GitHub (tải tarball, hỗ trợ repo private), hoặc thư mục source local (có trình duyệt thư mục tích hợp, không cần gõ tay đường dẫn).
+- 🔍 **3 chế độ quét** — URL trực tiếp, repo GitHub (tải tarball, hỗ trợ repo private; đã đăng nhập thì chọn repo từ danh sách của mình thay vì gõ URL), hoặc thư mục source local (có trình duyệt thư mục tích hợp, không cần gõ tay đường dẫn).
 - ⚡ **Runtime audit thật** — Lighthouse 13 chạy trên Chrome hệ thống (mobile throttling 4G / desktop), đo đủ Core Web Vitals: LCP, CLS, TBT, FCP, TTFB, Speed Index.
 - 🔁 **Phát hiện lãng phí re-render** — shim React DevTools hook qua Playwright, đếm render theo từng component, bắt cả **render loop xảy ra khi trang idle**.
 - 🧠 **Phát hiện memory leak** — đo DOM Nodes / JSEventListeners / Heap qua CDP, nhiều vòng tương tác có force GC giữa các vòng; tăng đơn điệu = leak.
 - 📦 **Phân tích tĩnh bundle** — parse config Vite/Webpack/Next, phát hiện import nặng nguyên khối (lodash, moment…), thư viện nặng chưa lazy-load, barrel file, đo kích thước gzip của `dist/`.
 - 🔐 **Security headers + SEO** — CSP, HSTS, X-Frame-Options, nosniff, Referrer/Permissions-Policy, COOP; title/description/viewport/canonical/OG/lang/h1/img-alt + robots.txt.
 - 🤖 **AI sinh fix** — endpoint nào **OpenAI-compatible** cũng chạy được: GLM, OpenAI, DeepSeek, Ollama local… Sinh fix plan dạng full-file + diff xem trước.
-- 🚀 **1-click Pull Request** — tạo branch, commit mọi fix đã chọn, mở PR có tóm tắt qua GitHub REST. Token chỉ sống trong 1 request, không lưu lại đâu.
+- 🚀 **1-click Pull Request** — tạo branch, commit mọi fix đã chọn, mở PR có tóm tắt qua GitHub REST. Đăng nhập bằng GitHub (OAuth) thay vì dán PAT — access token chỉ nằm trong RAM của server, không lưu xuống đĩa.
 - 🇻🇳 **Dashboard tiếng Việt** — dark theme, theo dõi tiến độ scan theo stage, báo cáo với gauge điểm, thẻ CWV theo ngưỡng màu, biểu đồ render/component.
 
 <details>
@@ -98,12 +98,19 @@ pnpm monorepo, TypeScript toàn bộ.
 │   ├── app/scan/[id]/page.tsx       Báo cáo: gauge, CWV, biểu đồ, findings, diff view
 │   ├── components/FolderPickerDialog.tsx  Dialog duyệt thư mục cho chế độ local
 │   ├── lib/job-store.ts             Job store lưu SQLite (lịch sử sống qua restart)
+│   ├── lib/github-session.ts        Phiên GitHub OAuth (access token chỉ trong RAM)
 │   └── API routes:
 │       ├── POST /api/scans                    Tạo job scan (chạy background)
 │       ├── GET  /api/scans                    Lịch sử các lần scan gần đây
 │       ├── GET  /api/scans/[id]               Trạng thái + báo cáo (poll ~1.5s)
 │       ├── POST /api/scans/[id]/fix-preview   AI sinh preview fix (có diff)
-│       ├── POST /api/scans/[id]/pull-request  Tạo PR với các fix đã chọn
+│       ├── POST /api/scans/[id]/fix-prompt    Tạo prompt copy cho AI của bạn (mọi chế độ quét)
+│       ├── POST /api/scans/[id]/pull-request  Tạo PR với các fix đã chọn (phiên OAuth hoặc PAT)
+│       ├── GET  /api/auth/github/start        OAuth: redirect sang GitHub uỷ quyền
+│       ├── GET  /api/auth/github/callback     OAuth callback: code → token (session RAM)
+│       ├── POST /api/auth/github/logout       Đăng xuất GitHub
+│       ├── GET  /api/auth/session             Trạng thái đăng nhập cho UI (không trả token)
+│       ├── GET  /api/github/repos             Repo của tài khoản GitHub đã đăng nhập (picker chọn repo)
 │       └── GET  /api/fs                       Liệt kê ổ đĩa/thư mục cho FolderPicker
 └── examples/leaky-app/     App Vite+React cố tình mắc lỗi (demo + test E2E)
 ```
@@ -136,6 +143,21 @@ pnpm dev            # web app ở http://localhost:3000
 
 Mở [http://localhost:3000](http://localhost:3000), chọn một trong 3 tab quét và bấm **Bắt đầu quét**. Scan runtime mất khoảng 1–3 phút tuỳ target; tiến độ hiển thị theo từng stage.
 
+### Tuỳ chọn: đăng nhập bằng GitHub (OAuth)
+
+Quét repo private và tạo PR không cần dán PAT. Cấu hình một lần:
+
+1. Vào [github.com/settings/developers](https://github.com/settings/developers) → **New OAuth App**
+2. Homepage URL: `http://localhost:3000` — Authorization callback URL: `http://localhost:3000/api/auth/github/callback`
+3. Copy Client ID / Client Secret vào `.env` ở thư mục gốc:
+   ```env
+   GITHUB_CLIENT_ID=...
+   GITHUB_CLIENT_SECRET=...
+   ```
+4. Restart app, rồi bấm **Đăng nhập với GitHub** ở đầu dashboard.
+
+Access token chỉ nằm trong RAM của server trong 8 tiếng (hoặc tới khi restart) và không bao giờ ghi xuống đĩa hay database. Không cấu hình thì ô dán PAT tay vẫn hoạt động như cũ.
+
 ## Demo với fixture cố tình mắc lỗi
 
 Repo kèm sẵn `examples/leaky-app` — một app Vite + React **cố tình mắc đủ loại lỗi** (lodash/moment nguyên khối, barrel file, listener không gỡ, state update loop…) để bạn thấy WPSA hoạt động mà không cần target ngoài:
@@ -156,7 +178,7 @@ Kết quả tham chiếu (đã verify E2E, ~25 giây): điểm Lighthouse + CWV,
 | Chế độ | Input | Phân tích tĩnh | Runtime (Lighthouse + re-render + memory) |
 |---|---|---|---|
 | **URL** | URL bất kỳ | Security headers + SEO | ✅ |
-| **GitHub repo** | `https://github.com/owner/repo[/tree/branch]` (tải tarball ≤ 200MB; repo private cần token, dán trong form) | ✅ | Chỉ khi có thêm `liveUrl` |
+| **GitHub repo** | `https://github.com/owner/repo[/tree/branch]` (tải tarball ≤ 200MB; repo private cần phiên GitHub đã đăng nhập hoặc token) | ✅ | Chỉ khi có thêm `liveUrl` |
 | **Thư mục local** | Đường dẫn tuyệt đối (hoặc chọn qua dialog) | ✅ | Chỉ khi có thêm `liveUrl` |
 
 Tham số chung: `formFactor` (`mobile` mặc định / `desktop`), `memoryRounds` (3–6, mặc định 3).
@@ -185,7 +207,7 @@ Bất kỳ endpoint **OpenAI-compatible** nào (`/chat/completions` + Bearer key
 1. Scan xong → report hiển thị CWV, điểm Lighthouse, bảng render/component, findings theo nhóm.
 2. Tick chọn findings muốn fix (mặc định chọn sẵn critical + warning) → **🤖 Sinh preview fix bằng AI**.
 3. Xem diff từng file, bỏ chọn phần không muốn.
-4. **Tạo Pull Request** → nhập repo (`owner/name`) + **GitHub PAT** → tool tạo branch `wpsa/audit-fix-YYYYMMDD`, 1 commit chứa mọi fix, mở PR có tóm tắt.
+4. **Tạo Pull Request** → nhập repo (`owner/name`) → tool dùng phiên GitHub đã đăng nhập (OAuth) hoặc **GitHub PAT** dán tay → tạo branch `wpsa/audit-fix-YYYYMMDD`, 1 commit chứa mọi fix, mở PR có tóm tắt.
 5. Review diff trên GitHub → merge.
 
 Quyền PAT cần thiết:
@@ -195,7 +217,7 @@ Quyền PAT cần thiết:
 | **Fine-grained** (khuyến nghị) | *Contents: Read and write* + *Pull requests: Read and write*; repo phải nằm trong *Repository access* |
 | Classic | scope `repo` |
 
-🔒 Token chỉ sống trong đúng 1 request, không được ghi vào file, log hay database nào.
+🔒 Access token OAuth chỉ nằm trong RAM của server (8 tiếng, mất khi restart); PAT dán tay chỉ sống trong đúng 1 request. Cả hai đều không bao giờ được ghi vào file, log hay database nào.
 
 ## API
 
@@ -205,7 +227,13 @@ Quyền PAT cần thiết:
 | `GET` | `/api/scans` | Lịch sử các lần scan gần đây (20 job mới nhất) |
 | `GET` | `/api/scans/[id]` | Trạng thái + báo cáo (poll ~1.5s) |
 | `POST` | `/api/scans/[id]/fix-preview` | AI sinh preview fix kèm diff (cần AI key) |
-| `POST` | `/api/scans/[id]/pull-request` | Tạo PR từ các fix đã chọn (cần PAT) |
+| `POST` | `/api/scans/[id]/fix-prompt` | Tạo prompt copy cho AI của bạn — mọi chế độ quét (quét repo/thư mục có thể kèm file nguồn) |
+| `POST` | `/api/scans/[id]/pull-request` | Tạo PR từ các fix đã chọn (phiên OAuth hoặc PAT trong body) |
+| `GET` | `/api/auth/github/start` | OAuth: redirect sang trang uỷ quyền GitHub |
+| `GET` | `/api/auth/github/callback` | OAuth callback: đổi `code` → token, tạo session RAM |
+| `POST` | `/api/auth/github/logout` | Đăng xuất GitHub |
+| `GET` | `/api/auth/session` | Trạng thái đăng nhập cho UI (`{ configured, authenticated, login, avatarUrl }` — không trả token) |
+| `GET` | `/api/github/repos?page=` | Repo của tài khoản GitHub đã đăng nhập (mới push trước, 100/trang — dùng cho picker chọn repo) |
 | `GET` | `/api/fs?path=` | Liệt kê ổ đĩa / thư mục (dùng cho FolderPicker) |
 
 ```bash
@@ -236,7 +264,7 @@ curl -X POST localhost:3000/api/scans/<id>/pull-request \
 ## Kiểm thử
 
 ```bash
-pnpm test           # vitest: security/SEO + bundle detector (12 test)
+pnpm test           # vitest: security/SEO + bundle detector + prompt builder + OAuth session (23 engine + 27 web test)
 pnpm build          # typecheck toàn workspace
 ```
 
@@ -253,11 +281,14 @@ E2E đã verify: scan `examples/leaky-app` (local + live) bắt đủ 4 nhóm l�
 | Tên component trên biểu đồ bị rút gọn (`nZ`, `C`) | Target là **production build** — React xoá tên function ở bản prod. Quét bản dev build sẽ có tên đầy đủ. |
 | Lịch sử scan biến mất / job cũ báo lỗi "Server đã restart giữa chừng scan" | Job lưu trong SQLite (`apps/web/.data/wpsa-jobs.db`) nên sống qua restart — job đang chạy khi server tắt sẽ bị đánh dấu lỗi. Job đã xong được dọn sau 6 tiếng (chỉnh bằng `WPSA_JOB_TTL_HOURS`). |
 | Không thấy nút sinh fix AI | Chưa cấu hình `AI_API_KEY` trong `.env` — thêm xong nhớ restart app. |
+| Không thấy nút "Đăng nhập với GitHub" | Chưa có `GITHUB_CLIENT_ID`/`GITHUB_CLIENT_SECRET` trong `.env` — thêm xong nhớ restart app. |
+| Đăng nhập GitHub báo "Đổi authorization code thất bại" | Client Secret sai, hoặc callback URL đăng ký trên GitHub OAuth App không khớp với thực tế (`http://localhost:3000/api/auth/github/callback` — chạy port khác? đặt `WPSA_PUBLIC_URL` trong `.env`). |
+| Tạo PR trả **401** sau khi đăng nhập OAuth | Token của phiên đã bị thu hồi trên GitHub hoặc phiên hết hạn (8 tiếng / server restart) — đăng nhập lại. |
 
 ## Lộ trình
 
 - [x] Lưu job vào SQLite thay vì in-memory (giữ lịch sử qua restart)
-- [ ] GitHub App / OAuth thay cho việc dán PAT tay
+- [x] GitHub App / OAuth thay cho việc dán PAT tay (đăng nhập OAuth App; access token chỉ trong RAM)
 - [ ] Docker image chạy 1 lệnh
 - [ ] CLI độc lập (scan không cần dashboard)
 - [ ] Xuất báo cáo PDF/HTML

@@ -1,9 +1,11 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { FolderPickerDialog } from '@/components/FolderPickerDialog';
+import { GithubAuth, useGithubSession } from '@/components/GithubAuth';
 import { RecentScans } from '@/components/RecentScans';
+import { RepoPickerDialog } from '@/components/RepoPickerDialog';
 
 type Tab = 'url' | 'repo' | 'local';
 
@@ -13,19 +15,39 @@ const TABS: { key: Tab; label: string; hint: string }[] = [
   { key: 'local', label: 'Thư mục local', hint: 'Phân tích tĩnh một thư mục trên máy này' },
 ];
 
+const AUTH_ERROR_LABELS: Record<string, string> = {
+  not_configured: 'OAuth chưa cấu hình — thêm GITHUB_CLIENT_ID và GITHUB_CLIENT_SECRET vào .env rồi restart app.',
+  denied: 'Bạn đã từ chối uỷ quyền trên GitHub.',
+  state_expired: 'Phiên đăng nhập đã hết hạn — bấm "Đăng nhập với GitHub" để thử lại.',
+  invalid_callback: 'Callback từ GitHub thiếu code/state — thử đăng nhập lại.',
+  exchange_failed: 'Đổi authorization code thất bại — kiểm tra GITHUB_CLIENT_SECRET và callback URL đã đăng ký trên GitHub OAuth App.',
+};
+
 export default function HomePage() {
   const router = useRouter();
+  const { session, logout } = useGithubSession();
   const [tab, setTab] = useState<Tab>('url');
   const [url, setUrl] = useState('');
   const [repoUrl, setRepoUrl] = useState('');
   const [token, setToken] = useState('');
   const [localPath, setLocalPath] = useState('');
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [repoPickerOpen, setRepoPickerOpen] = useState(false);
   const [liveUrl, setLiveUrl] = useState('');
   const [formFactor, setFormFactor] = useState<'mobile' | 'desktop'>('mobile');
   const [memoryRounds, setMemoryRounds] = useState(3);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [authError, setAuthError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const err = new URLSearchParams(window.location.search).get('auth_error');
+    if (err) {
+      setAuthError(AUTH_ERROR_LABELS[err] ?? 'Đăng nhập GitHub thất bại — thử lại nhé.');
+      // Dọn query string để refresh/F5 không hiện lại banner
+      window.history.replaceState(null, '', window.location.pathname);
+    }
+  }, []);
 
   async function submit() {
     setSubmitting(true);
@@ -57,6 +79,14 @@ export default function HomePage() {
 
   return (
     <main className="mx-auto flex min-h-screen max-w-3xl flex-col justify-center px-4 py-12">
+      <GithubAuth session={session} onLogout={logout} />
+
+      {authError && (
+        <div className="mb-6 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+          {authError}
+        </div>
+      )}
+
       <div className="mb-10 text-center">
         <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-sky-500/30 bg-sky-500/10 px-4 py-1.5 text-xs font-medium text-sky-300">
           Frontend Optimization Toolkit
@@ -104,13 +134,37 @@ export default function HomePage() {
             <>
               <label className="block">
                 <span className="mb-1.5 block text-xs font-medium text-slate-300">GitHub repo URL</span>
-                <input
-                  className={inputClass}
-                  placeholder="https://github.com/owner/repo"
-                  value={repoUrl}
-                  onChange={(e) => setRepoUrl(e.target.value)}
-                />
+                <div className="flex gap-2">
+                  <input
+                    className={`${inputClass} min-w-0 flex-1`}
+                    placeholder="https://github.com/owner/repo"
+                    value={repoUrl}
+                    onChange={(e) => setRepoUrl(e.target.value)}
+                  />
+                  {session.authenticated && (
+                    <button
+                      type="button"
+                      onClick={() => setRepoPickerOpen(true)}
+                      className="whitespace-nowrap rounded-lg border border-sky-500/40 bg-sky-500/10 px-3.5 text-sm font-medium text-sky-300 transition hover:bg-sky-500/20"
+                    >
+                      Chọn từ GitHub…
+                    </button>
+                  )}
+                </div>
               </label>
+              {session.configured ? (
+                <p className="text-xs text-slate-500">
+                  {session.authenticated ? (
+                    <>
+                      Đang dùng phiên GitHub của{' '}
+                      <span className="font-medium text-sky-300">{session.login}</span> — bấm “Chọn từ GitHub…”
+                      để chọn repo; ô PAT bên dưới chỉ để override nếu muốn dùng token khác.
+                    </>
+                  ) : (
+                    <>Mẹo: bấm “Đăng nhập với GitHub” phía trên thay vì dán PAT tay.</>
+                  )}
+                </p>
+              ) : null}
               <label className="block">
                 <span className="mb-1.5 block text-xs font-medium text-slate-300">
                   GitHub token <span className="text-slate-500">(tuỳ chọn — cho repo private)</span>
@@ -216,6 +270,16 @@ export default function HomePage() {
             setPickerOpen(false);
           }}
           onClose={() => setPickerOpen(false)}
+        />
+      )}
+
+      {repoPickerOpen && (
+        <RepoPickerDialog
+          onSelect={(repo) => {
+            setRepoUrl(repo);
+            setRepoPickerOpen(false);
+          }}
+          onClose={() => setRepoPickerOpen(false)}
         />
       )}
     </main>
