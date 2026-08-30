@@ -50,7 +50,7 @@ Paste a URL, a GitHub repo, or point to a local source folder — WPSA runs Ligh
 
 ## Features
 
-- 🔍 **Three scan modes** — a direct URL, a GitHub repo (tarball download, private repo support), or a local source folder (with a built-in folder picker, no path typing required).
+- 🔍 **Three scan modes** — a direct URL, a GitHub repo (tarball download, private repo support; signed in? pick one of your own repos from a searchable list instead of typing the URL), or a local source folder (with a built-in folder picker, no path typing required).
 - ⚡ **Real runtime auditing** — Lighthouse 13 on the system Chrome (mobile 4G throttling / desktop), full Core Web Vitals: LCP, CLS, TBT, FCP, TTFB, Speed Index.
 - 🔁 **Wasteful re-render detection** — a React DevTools hook shim through Playwright, per-component render counting, catches even **render loops that fire while the page is idle**.
 - 🧠 **Memory leak detection** — DOM Nodes / JSEventListeners / Heap via CDP across multiple interaction rounds with forced GC in between; monotonic growth = leak.
@@ -113,6 +113,7 @@ A pnpm monorepo, TypeScript throughout.
 │       ├── GET  /api/auth/github/callback     OAuth callback: code → token (RAM session)
 │       ├── POST /api/auth/github/logout       End the GitHub session
 │       ├── GET  /api/auth/session             Sign-in state for the UI (never returns the token)
+│       ├── GET  /api/github/repos             Repos of the signed-in account (repo picker)
 │       └── GET  /api/fs                       List drives/folders for the FolderPicker
 └── examples/leaky-app/     Vite+React app with intentional issues (demo + E2E tests)
 ```
@@ -248,6 +249,7 @@ This flow needs **no `AI_API_KEY`** — prompt building is plain templating + fi
 | `GET` | `/api/auth/github/callback` | OAuth callback: exchange `code` → token, create RAM session |
 | `POST` | `/api/auth/github/logout` | End the GitHub session |
 | `GET` | `/api/auth/session` | Sign-in state for the UI (`{ configured, authenticated, login, avatarUrl }` — never the token) |
+| `GET` | `/api/github/repos?page=` | Repos of the signed-in GitHub account (newest push first, 100/page — powers the repo picker) |
 | `GET` | `/api/fs?path=` | List drives/folders (used by the FolderPicker) |
 
 ```bash
@@ -282,7 +284,7 @@ curl -X POST localhost:3000/api/scans/<id>/pull-request \
 ## Testing
 
 ```bash
-pnpm test           # vitest: security/SEO + bundle detectors + prompt builder + OAuth session (23 engine + 24 web tests)
+pnpm test           # vitest: security/SEO + bundle detectors + prompt builder + OAuth session (23 engine + 27 web tests)
 pnpm build          # typecheck the whole workspace
 ```
 

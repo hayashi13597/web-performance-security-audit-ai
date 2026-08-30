@@ -163,3 +163,60 @@ export async function fetchGitHubUser(
   if (!data.login) throw new Error('GitHub không trả về login từ /user');
   return { login: data.login, avatarUrl: data.avatar_url ?? '' };
 }
+
+export interface GithubRepoInfo {
+  /** "owner/name" */
+  fullName: string;
+  url: string;
+  private: boolean;
+  language?: string;
+  defaultBranch?: string;
+  pushedAt?: string;
+  description?: string;
+}
+
+/** Danh sách repo của user đã đăng nhập (mới push trước) — dùng cho picker chọn repo. */
+export async function fetchUserRepos(
+  fetchImpl: typeof fetch,
+  token: string,
+  page = 1,
+): Promise<GithubRepoInfo[]> {
+  const params = new URLSearchParams({
+    sort: 'pushed',
+    direction: 'desc',
+    per_page: '100',
+    // repo của bản thân + được thêm làm collaborator + của org user thuộc về
+    affiliation: 'owner,collaborator,organization_member',
+    page: String(page),
+  });
+  const res = await fetchImpl(`https://api.github.com/user/repos?${params}`, {
+    headers: {
+      authorization: `Bearer ${token}`,
+      accept: 'application/vnd.github+json',
+      'user-agent': 'WPSA-Audit/0.1',
+    },
+  });
+  if (!res.ok) {
+    throw new Error(`GitHub trả HTTP ${res.status} khi đọc danh sách repo`);
+  }
+  const data = (await res.json()) as Array<{
+    full_name?: string;
+    html_url?: string;
+    private?: boolean;
+    language?: string | null;
+    default_branch?: string | null;
+    pushed_at?: string | null;
+    description?: string | null;
+  }>;
+  return data
+    .filter((r) => r.full_name && r.html_url)
+    .map((r) => ({
+      fullName: r.full_name as string,
+      url: r.html_url as string,
+      private: r.private === true,
+      language: r.language ?? undefined,
+      defaultBranch: r.default_branch ?? undefined,
+      pushedAt: r.pushed_at ?? undefined,
+      description: r.description ?? undefined,
+    }));
+}

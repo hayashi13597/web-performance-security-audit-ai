@@ -48,7 +48,7 @@ Paste một URL, một repo GitHub hoặc trỏ tới thư mục source trên m�
 
 ## Tính năng
 
-- 🔍 **3 chế độ quét** — URL trực tiếp, repo GitHub (tải tarball, hỗ trợ repo private), hoặc thư mục source local (có trình duyệt thư mục tích hợp, không cần gõ tay đường dẫn).
+- 🔍 **3 chế độ quét** — URL trực tiếp, repo GitHub (tải tarball, hỗ trợ repo private; đã đăng nhập thì chọn repo từ danh sách của mình thay vì gõ URL), hoặc thư mục source local (có trình duyệt thư mục tích hợp, không cần gõ tay đường dẫn).
 - ⚡ **Runtime audit thật** — Lighthouse 13 chạy trên Chrome hệ thống (mobile throttling 4G / desktop), đo đủ Core Web Vitals: LCP, CLS, TBT, FCP, TTFB, Speed Index.
 - 🔁 **Phát hiện lãng phí re-render** — shim React DevTools hook qua Playwright, đếm render theo từng component, bắt cả **render loop xảy ra khi trang idle**.
 - 🧠 **Phát hiện memory leak** — đo DOM Nodes / JSEventListeners / Heap qua CDP, nhiều vòng tương tác có force GC giữa các vòng; tăng đơn điệu = leak.
@@ -110,6 +110,7 @@ pnpm monorepo, TypeScript toàn bộ.
 │       ├── GET  /api/auth/github/callback     OAuth callback: code → token (session RAM)
 │       ├── POST /api/auth/github/logout       Đăng xuất GitHub
 │       ├── GET  /api/auth/session             Trạng thái đăng nhập cho UI (không trả token)
+│       ├── GET  /api/github/repos             Repo của tài khoản GitHub đã đăng nhập (picker chọn repo)
 │       └── GET  /api/fs                       Liệt kê ổ đĩa/thư mục cho FolderPicker
 └── examples/leaky-app/     App Vite+React cố tình mắc lỗi (demo + test E2E)
 ```
@@ -232,6 +233,7 @@ Quyền PAT cần thiết:
 | `GET` | `/api/auth/github/callback` | OAuth callback: đổi `code` → token, tạo session RAM |
 | `POST` | `/api/auth/github/logout` | Đăng xuất GitHub |
 | `GET` | `/api/auth/session` | Trạng thái đăng nhập cho UI (`{ configured, authenticated, login, avatarUrl }` — không trả token) |
+| `GET` | `/api/github/repos?page=` | Repo của tài khoản GitHub đã đăng nhập (mới push trước, 100/trang — dùng cho picker chọn repo) |
 | `GET` | `/api/fs?path=` | Liệt kê ổ đĩa / thư mục (dùng cho FolderPicker) |
 
 ```bash
@@ -262,7 +264,7 @@ curl -X POST localhost:3000/api/scans/<id>/pull-request \
 ## Kiểm thử
 
 ```bash
-pnpm test           # vitest: security/SEO + bundle detector + prompt builder + OAuth session (23 engine + 24 web test)
+pnpm test           # vitest: security/SEO + bundle detector + prompt builder + OAuth session (23 engine + 27 web test)
 pnpm build          # typecheck toàn workspace
 ```
 

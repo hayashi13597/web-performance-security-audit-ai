@@ -8,6 +8,7 @@ import {
   deleteSession,
   exchangeCode,
   fetchGitHubUser,
+  fetchUserRepos,
   getSession,
   oauthConfig,
 } from '@/lib/github-session';
@@ -125,5 +126,53 @@ describe('fetchGitHubUser', () => {
     await expect(fetchGitHubUser(noLogin, 't')).rejects.toThrow(/login/);
     const unauthorized = (async () => jsonResponse(401, { message: 'Bad credentials' })) as typeof fetch;
     await expect(fetchGitHubUser(unauthorized, 't')).rejects.toThrow(/HTTP 401/);
+  });
+});
+
+describe('fetchUserRepos', () => {
+  it('thành công → map đủ trường, bỏ entry thiếu full_name', async () => {
+    const fetchMock = (async () =>
+      jsonResponse(200, [
+        {
+          full_name: 'octocat/hello-world',
+          html_url: 'https://github.com/octocat/hello-world',
+          private: false,
+          language: 'TypeScript',
+          default_branch: 'main',
+          pushed_at: '2026-08-01T00:00:00Z',
+          description: 'demo repo',
+        },
+        { full_name: 'octocat/secret', html_url: 'https://github.com/octocat/secret', private: true },
+        { html_url: 'https://github.com/broken' },
+      ])) as typeof fetch;
+    const repos = await fetchUserRepos(fetchMock, 't');
+    expect(repos).toHaveLength(2);
+    expect(repos[0]).toEqual({
+      fullName: 'octocat/hello-world',
+      url: 'https://github.com/octocat/hello-world',
+      private: false,
+      language: 'TypeScript',
+      defaultBranch: 'main',
+      pushedAt: '2026-08-01T00:00:00Z',
+      description: 'demo repo',
+    });
+    expect(repos[1]).toMatchObject({ fullName: 'octocat/secret', private: true, language: undefined });
+  });
+
+  it('truyền page → URL phân trang + sort=pushed', async () => {
+    let requested = '';
+    const fetchMock = (async (url: string | URL | Request) => {
+      requested = String(url);
+      return jsonResponse(200, []);
+    }) as unknown as typeof fetch;
+    await fetchUserRepos(fetchMock, 't', 2);
+    expect(requested).toContain('page=2');
+    expect(requested).toContain('sort=pushed');
+    expect(requested).toContain('affiliation=owner%2Ccollaborator%2Corganization_member');
+  });
+
+  it('HTTP lỗi → ném lỗi kèm status', async () => {
+    const fetchMock = (async () => jsonResponse(401, { message: 'Bad credentials' })) as typeof fetch;
+    await expect(fetchUserRepos(fetchMock, 't')).rejects.toThrow(/HTTP 401/);
   });
 });

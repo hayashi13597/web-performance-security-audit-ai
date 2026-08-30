@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { FolderPickerDialog } from '@/components/FolderPickerDialog';
 import { GithubAuth, useGithubSession } from '@/components/GithubAuth';
 import { RecentScans } from '@/components/RecentScans';
+import { RepoPickerDialog } from '@/components/RepoPickerDialog';
 
 type Tab = 'url' | 'repo' | 'local';
 
@@ -31,6 +32,7 @@ export default function HomePage() {
   const [token, setToken] = useState('');
   const [localPath, setLocalPath] = useState('');
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [repoPickerOpen, setRepoPickerOpen] = useState(false);
   const [liveUrl, setLiveUrl] = useState('');
   const [formFactor, setFormFactor] = useState<'mobile' | 'desktop'>('mobile');
   const [memoryRounds, setMemoryRounds] = useState(3);
@@ -132,20 +134,31 @@ export default function HomePage() {
             <>
               <label className="block">
                 <span className="mb-1.5 block text-xs font-medium text-slate-300">GitHub repo URL</span>
-                <input
-                  className={inputClass}
-                  placeholder="https://github.com/owner/repo"
-                  value={repoUrl}
-                  onChange={(e) => setRepoUrl(e.target.value)}
-                />
+                <div className="flex gap-2">
+                  <input
+                    className={`${inputClass} min-w-0 flex-1`}
+                    placeholder="https://github.com/owner/repo"
+                    value={repoUrl}
+                    onChange={(e) => setRepoUrl(e.target.value)}
+                  />
+                  {session.authenticated && (
+                    <button
+                      type="button"
+                      onClick={() => setRepoPickerOpen(true)}
+                      className="whitespace-nowrap rounded-lg border border-sky-500/40 bg-sky-500/10 px-3.5 text-sm font-medium text-sky-300 transition hover:bg-sky-500/20"
+                    >
+                      Chọn từ GitHub…
+                    </button>
+                  )}
+                </div>
               </label>
               {session.configured ? (
                 <p className="text-xs text-slate-500">
                   {session.authenticated ? (
                     <>
                       Đang dùng phiên GitHub của{' '}
-                      <span className="font-medium text-sky-300">{session.login}</span> — ô PAT bên dưới chỉ
-                      để override nếu muốn dùng token khác.
+                      <span className="font-medium text-sky-300">{session.login}</span> — bấm “Chọn từ GitHub…”
+                      để chọn repo; ô PAT bên dưới chỉ để override nếu muốn dùng token khác.
                     </>
                   ) : (
                     <>Mẹo: bấm “Đăng nhập với GitHub” phía trên thay vì dán PAT tay.</>
@@ -257,6 +270,16 @@ export default function HomePage() {
             setPickerOpen(false);
           }}
           onClose={() => setPickerOpen(false)}
+        />
+      )}
+
+      {repoPickerOpen && (
+        <RepoPickerDialog
+          onSelect={(repo) => {
+            setRepoUrl(repo);
+            setRepoPickerOpen(false);
+          }}
+          onClose={() => setRepoPickerOpen(false)}
         />
       )}
     </main>
