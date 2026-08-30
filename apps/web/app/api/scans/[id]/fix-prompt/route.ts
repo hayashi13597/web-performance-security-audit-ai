@@ -15,11 +15,8 @@ export async function POST(
   if (job.status !== 'done' || !job.report) {
     return NextResponse.json({ error: 'Scan chưa hoàn tất' }, { status: 409 });
   }
-  if (!job.report.sourceDir) {
-    return NextResponse.json(
-      { error: 'Scan này không có source code (chỉ quét URL) nên không sinh được prompt fix. Hãy scan theo repo/thư mục.' },
-      { status: 422 },
-    );
+  if (job.report.findings.length === 0) {
+    return NextResponse.json({ error: 'Scan không có finding nào để đưa vào prompt' }, { status: 422 });
   }
 
   let findingIds: string[] | undefined;
@@ -29,24 +26,27 @@ export async function POST(
     findingIds = body.findingIds;
     if (typeof body.includeFiles === 'boolean') includeFiles = body.includeFiles;
   } catch {
-    // body rỗng — dùng tất cả finding aiFixable, kèm file nguồn
+    // body rỗng — dùng tất cả finding, kèm file nguồn nếu scan có source
   }
 
-  const findings = job.report.findings.filter(
-    (f) => f.aiFixable && (!findingIds || findingIds.includes(f.id)),
-  );
+  const findings = findingIds
+    ? job.report.findings.filter((f) => findingIds!.includes(f.id))
+    : job.report.findings;
   if (findings.length === 0) {
-    return NextResponse.json({ error: 'Không có finding nào đủ điều kiện sinh prompt' }, { status: 422 });
+    return NextResponse.json({ error: 'Không có finding nào khớp danh sách đã chọn' }, { status: 422 });
   }
 
+  const hasSource = !!job.report.sourceDir;
   try {
     const { buildFixPrompt } = loadEngine();
-    const result = await buildFixPrompt(findings, job.report.sourceDir, {
+    const result = await buildFixPrompt(findings, {
+      projectDir: job.report.sourceDir,
       includeFiles,
       repo: job.report.repo,
       liveUrl: job.report.url,
+      cwv: job.report.cwv,
     });
-    return NextResponse.json({ ...result, includeFiles });
+    return NextResponse.json({ ...result, includeFiles: hasSource && includeFiles });
   } catch (err) {
     return NextResponse.json(
       { error: `Sinh prompt thất bại: ${err instanceof Error ? err.message : String(err)}` },

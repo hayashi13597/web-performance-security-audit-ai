@@ -47,9 +47,9 @@ function makeFinding(over: Partial<Finding> = {}): Finding {
   };
 }
 
-describe('buildFixPrompt', () => {
+describe('buildFixPrompt — scan có source (repo/local)', () => {
   it('chứa thông tin finding: tiêu đề, file:dòng, gợi ý fix, số liệu', async () => {
-    const { prompt } = await buildFixPrompt([makeFinding()], dir, { includeFiles: false });
+    const { prompt } = await buildFixPrompt([makeFinding()], { projectDir: dir, includeFiles: false });
     expect(prompt).toContain('Full import lodash');
     expect(prompt).toContain('`src/app.tsx:1`');
     expect(prompt).toContain('Import trực tiếp hàm cần dùng.');
@@ -58,7 +58,7 @@ describe('buildFixPrompt', () => {
   });
 
   it('kèm snippet của FileRef khi có', async () => {
-    const { prompt } = await buildFixPrompt([makeFinding()], dir, { includeFiles: false });
+    const { prompt } = await buildFixPrompt([makeFinding()], { projectDir: dir, includeFiles: false });
     expect(prompt).toContain("import _ from 'lodash';");
   });
 
@@ -68,27 +68,27 @@ describe('buildFixPrompt', () => {
         makeFinding({ id: 'w', severity: 'warning', title: 'Finding warning' }),
         makeFinding({ id: 'c', severity: 'critical', title: 'Finding critical' }),
       ],
-      dir,
-      { includeFiles: false },
+      { projectDir: dir, includeFiles: false },
     );
     expect(prompt.indexOf('Finding critical')).toBeLessThan(prompt.indexOf('Finding warning'));
   });
 
   it('kèm nội dung file nguồn khi includeFiles=true (mặc định)', async () => {
-    const { prompt, includedFiles } = await buildFixPrompt([makeFinding()], dir);
+    const { prompt, includedFiles } = await buildFixPrompt([makeFinding()], { projectDir: dir });
     expect(includedFiles).toContain('src/app.tsx');
     expect(prompt).toContain('----- FILE: src/app.tsx -----');
     expect(prompt).toContain("import _ from 'lodash';");
   });
 
   it('không kèm file nguồn khi includeFiles=false', async () => {
-    const { prompt, includedFiles } = await buildFixPrompt([makeFinding()], dir, { includeFiles: false });
+    const { prompt, includedFiles } = await buildFixPrompt([makeFinding()], { projectDir: dir, includeFiles: false });
     expect(includedFiles).toEqual([]);
     expect(prompt).not.toContain('----- FILE:');
   });
 
   it('ghi ngữ cảnh repo + liveUrl khi có', async () => {
-    const { prompt } = await buildFixPrompt([makeFinding()], dir, {
+    const { prompt } = await buildFixPrompt([makeFinding()], {
+      projectDir: dir,
       includeFiles: false,
       repo: { owner: 'acme', name: 'web', branch: 'main' },
       liveUrl: 'https://preview.example.com',
@@ -101,7 +101,7 @@ describe('buildFixPrompt', () => {
   it('file trong finding không tồn tại thì vẫn liệt kê nhưng bỏ qua khi đọc nội dung', async () => {
     const { prompt, includedFiles } = await buildFixPrompt(
       [makeFinding({ files: [{ path: 'src/missing.ts', line: 9 }] })],
-      dir,
+      { projectDir: dir },
     );
     expect(prompt).toContain('`src/missing.ts:9`');
     expect(includedFiles).not.toContain('src/missing.ts');
@@ -110,7 +110,7 @@ describe('buildFixPrompt', () => {
   it('không đính kèm file trong thư mục build output (dist/build/node_modules…)', async () => {
     const { prompt, includedFiles } = await buildFixPrompt(
       [makeFinding({ files: [{ path: 'dist/bundle.js' }] })],
-      dir,
+      { projectDir: dir },
     );
     expect(includedFiles).not.toContain('dist/bundle.js');
     expect(prompt).not.toContain('----- FILE: dist/bundle.js -----');
@@ -119,14 +119,44 @@ describe('buildFixPrompt', () => {
   });
 
   it('cắt bớt file nguồn quá dài theo ký tự, có ghi chú cắt', async () => {
-    const { prompt, includedFiles } = await buildFixPrompt(
-      [makeFinding({ files: [{ path: 'src/big.ts' }] })],
-      dir,
-    );
+    const { prompt, includedFiles } = await buildFixPrompt([makeFinding({ files: [{ path: 'src/big.ts' }] })], {
+      projectDir: dir,
+    });
     expect(includedFiles).toContain('src/big.ts');
     expect(prompt).toContain('cắt bớt');
     const fileSection = prompt.split('----- FILE: src/big.ts -----')[1] ?? '';
     const fileContent = fileSection.split('----- FILE:')[0] ?? '';
     expect(fileContent.length).toBeLessThan(11_000);
+  });
+});
+
+describe('buildFixPrompt — scan URL (không có source)', () => {
+  it('không đính kèm file và hướng dẫn AI tự điều tra codebase', async () => {
+    const { prompt, includedFiles } = await buildFixPrompt(
+      [makeFinding({ files: undefined, aiFixable: false, category: 'security' })],
+      { includeFiles: true },
+    );
+    expect(includedFiles).toEqual([]);
+    expect(prompt).not.toContain('----- FILE:');
+    expect(prompt).toContain('không kèm đường dẫn file');
+    expect(prompt).toContain('điều tra codebase');
+  });
+
+  it('đưa số liệu CWV vào ngữ cảnh khi có', async () => {
+    const { prompt } = await buildFixPrompt(
+      [makeFinding({ files: undefined, aiFixable: false, category: 'performance' })],
+      {
+        liveUrl: 'https://example.com',
+        cwv: { performanceScore: 45, seoScore: 90, lcp: 3200, tbt: 800, cls: 0.05 },
+      },
+    );
+    expect(prompt).toContain('Điểm hiệu năng: 45/100');
+    expect(prompt).toContain('Điểm SEO: 90/100');
+    expect(prompt).toContain('LCP: 3200ms');
+    expect(prompt).toContain('TBT: 800ms');
+    expect(prompt).toContain('CLS: 0.05');
+    // field không có trong cwv không bị render
+    expect(prompt).not.toContain('TTFB');
+    expect(prompt).toContain('https://example.com');
   });
 });

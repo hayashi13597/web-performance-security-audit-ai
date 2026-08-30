@@ -58,7 +58,7 @@ Paste a URL, a GitHub repo, or point to a local source folder — WPSA runs Ligh
 - 🔐 **Security headers + SEO** — CSP, HSTS, X-Frame-Options, nosniff, Referrer/Permissions-Policy, COOP; title/description/viewport/canonical/OG/lang/h1/img-alt + robots.txt.
 - 🤖 **AI-generated fixes** — any **OpenAI-compatible** endpoint works: GLM, OpenAI, DeepSeek, local Ollama… Produces fix plans as full files + reviewable diffs.
 - 🚀 **One-click Pull Request** — creates a branch, commits every selected fix, opens a PR with a summary via the GitHub REST API. The token lives for exactly one request and is never stored anywhere.
-- 📋 **Copy-prompt fix** — for repo/folder scans, generates a ready-to-paste prompt (findings + related source files) so you can fix the issues with your own AI tool (Claude Code, Cursor, Copilot…) right in your working copy. Works with **no AI key configured**.
+- 📋 **Copy-prompt fix** — available for **every scan mode** (URL, GitHub repo, local folder): generates a ready-to-paste prompt describing the selected findings so you can fix the issues with your own AI tool (Claude Code, Cursor, Copilot…) right in your working copy. Repo/folder scans also attach the related source files. Works with **no AI key configured**.
 - 🇻🇳 **Vietnamese dashboard** — dark theme, stage-by-stage scan progress, reports with score gauges, color-thresholded CWV cards, and render/component charts.
 
 <details>
@@ -106,7 +106,7 @@ A pnpm monorepo, TypeScript throughout.
 │       ├── GET  /api/scans                    Recent scan history
 │       ├── GET  /api/scans/[id]               Status + report (poll ~1.5s)
 │       ├── POST /api/scans/[id]/fix-preview   AI-generate a fix preview (with diffs)
-│       ├── POST /api/scans/[id]/fix-prompt    Build a copy-ready fix prompt for your own AI tool (no AI key needed)
+│       ├── POST /api/scans/[id]/fix-prompt    Build a copy-ready fix prompt for your own AI tool (every scan mode)
 │       ├── POST /api/scans/[id]/pull-request  Create a PR from the selected fixes
 │       └── GET  /api/fs                       List drives/folders for the FolderPicker
 └── examples/leaky-app/     Vite+React app with intentional issues (demo + E2E tests)
@@ -203,12 +203,14 @@ Required PAT permissions:
 
 ## Copy-prompt fix flow (bring your own AI)
 
-Prefer to fix things in your own working copy with an agentic AI (Claude Code, Cursor, Copilot…)? Repo/folder scans offer a parallel flow:
+Prefer to fix things in your own working copy with an agentic AI (Claude Code, Cursor, Copilot…)? Every scan mode offers a parallel flow:
 
-1. Scan finishes → tick the findings you want fixed (same checkboxes as the PR flow).
-2. In the bottom panel click **📋 Create prompt to copy** — the tool builds a Vietnamese markdown prompt describing every selected finding (severity, file `path:line`, snippet, impact, fix hint, metrics) and, by default, attaches the current content of the related source files (max 10 files × 350 lines, read from the scanned source).
-3. Untick **Kèm nội dung file nguồn** if your AI can read the repo itself (e.g. Claude Code / Cursor) — the prompt then only references paths, keeping it short.
+1. Scan finishes → tick the findings you want fixed (critical + warning are preselected; every finding has a checkbox).
+2. In the bottom panel click **📋 Create prompt to copy** — the tool builds a Vietnamese markdown prompt describing every selected finding (severity, category, detector, file `path:line` + snippet when known, impact, fix hint, metrics, CWV scores) and, for repo/folder scans, attaches the current content of the related source files (max 10 files × 350 lines, read from the scanned source).
+3. Repo/folder scans only: untick **Kèm nội dung file nguồn** if your AI can read the repo itself (e.g. Claude Code / Cursor) — the prompt then only references paths, keeping it short.
 4. **Copy prompt** → paste it into your AI tool opened at your project folder and let it apply the fixes.
+
+For **URL scans** there is no source to attach: the prompt describes the runtime findings (security headers, SEO, CWV, render loops…) and instructs your AI to investigate your codebase and fix each issue at its root.
 
 This flow needs **no `AI_API_KEY`** — prompt building is plain templating + file reading, so it also works when the server-side AI is unconfigured.
 
@@ -220,7 +222,7 @@ This flow needs **no `AI_API_KEY`** — prompt building is plain templating + fi
 | `GET` | `/api/scans` | Recent scan history (last 20 jobs) |
 | `GET` | `/api/scans/[id]` | Status + report (poll ~1.5s) |
 | `POST` | `/api/scans/[id]/fix-preview` | AI-generate a fix preview with diffs (requires an AI key) |
-| `POST` | `/api/scans/[id]/fix-prompt` | Build a copy-ready fix prompt for your own AI tool (no AI key needed) |
+| `POST` | `/api/scans/[id]/fix-prompt` | Build a copy-ready fix prompt for your own AI tool — every scan mode (repo/folder scans can attach source files) |
 | `POST` | `/api/scans/[id]/pull-request` | Create a PR from the selected fixes (requires a PAT) |
 | `GET` | `/api/fs?path=` | List drives/folders (used by the FolderPicker) |
 

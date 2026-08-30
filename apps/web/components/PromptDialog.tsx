@@ -6,6 +6,7 @@ export function PromptDialog({
   prompt,
   fileCount,
   includeFiles,
+  canIncludeFiles = true,
   busy,
   error,
   onToggleFiles,
@@ -14,6 +15,8 @@ export function PromptDialog({
   prompt: string;
   fileCount: number;
   includeFiles: boolean;
+  /** false với scan URL (không có source) — ẩn toggle kèm file vì không có gì để đính kèm. */
+  canIncludeFiles?: boolean;
   busy: boolean;
   error: string | null;
   onToggleFiles: (include: boolean) => void;
@@ -60,18 +63,20 @@ export function PromptDialog({
           </button>
         </div>
 
-        <label className="mt-4 flex items-center gap-2 text-xs text-slate-300">
-          <input
-            type="checkbox"
-            checked={includeFiles}
-            disabled={busy}
-            onChange={(e) => onToggleFiles(e.target.checked)}
-            className="h-4 w-4 accent-sky-500"
-          />
-          Kèm nội dung file nguồn
-          {busy ? ' (đang đọc…)' : fileCount > 0 ? ` (${fileCount} file)` : ''}
-          <span className="text-slate-500">— tắt nếu AI của bạn tự đọc được repo (Claude Code, Cursor…)</span>
-        </label>
+        {canIncludeFiles && (
+          <label className="mt-4 flex items-center gap-2 text-xs text-slate-300">
+            <input
+              type="checkbox"
+              checked={includeFiles}
+              disabled={busy}
+              onChange={(e) => onToggleFiles(e.target.checked)}
+              className="h-4 w-4 accent-sky-500"
+            />
+            Kèm nội dung file nguồn
+            {busy ? ' (đang đọc…)' : fileCount > 0 ? ` (${fileCount} file)` : ''}
+            <span className="text-slate-500">— tắt nếu AI của bạn tự đọc được repo (Claude Code, Cursor…)</span>
+          </label>
+        )}
 
         {error && (
           <div className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">{error}</div>

@@ -1,24 +1,40 @@
-import type { Finding, RepoInfo } from '../types.js';
+import type { CWVMetrics, Finding, RepoInfo } from '../types.js';
 import { CATEGORY_LABELS } from '../types.js';
 import { readProjectFiles } from '../scanners/repo-scanner.js';
 import { collectRelevantPaths } from './fix-generator.js';
 
 export interface FixPromptResult {
   prompt: string;
-  /** Các file nguồn thực sự được đính kèm vào prompt (rỗng khi includeFiles=false hoặc không đọc được file nào). */
+  /** Các file nguồn thực sự được đính kèm vào prompt (rỗng khi không có sourceDir, includeFiles=false hoặc không đọc được file nào). */
   includedFiles: string[];
 }
 
 export interface BuildFixPromptOptions {
+  /** Thư mục source đã quét (repo/local). Không có ⇒ prompt chế độ "điều tra" cho scan URL, không đính kèm file. */
+  projectDir?: string;
   /** Mặc định true — đính kèm nội dung các file liên quan đọc từ projectDir. */
   includeFiles?: boolean;
   repo?: RepoInfo;
   liveUrl?: string;
+  /** Số liệu hiệu năng đo được (nếu có chạy detector runtime) — đưa vào làm ngữ cảnh. */
+  cwv?: CWVMetrics;
 }
 
 const PRIORITY: Record<string, number> = { critical: 0, warning: 1, info: 2 };
 
 const SEVERITY_VI: Record<string, string> = { critical: 'Nghiêm trọng', warning: 'Cảnh báo', info: 'Gợi ý' };
+
+const CWV_LABELS: Array<[keyof CWVMetrics, string, (v: number) => string]> = [
+  ['performanceScore', 'Điểm hiệu năng', (v) => `${v}/100`],
+  ['seoScore', 'Điểm SEO', (v) => `${v}/100`],
+  ['bestPracticesScore', 'Điểm Best Practices', (v) => `${v}/100`],
+  ['lcp', 'LCP', (v) => `${v}ms`],
+  ['tbt', 'TBT', (v) => `${v}ms`],
+  ['cls', 'CLS', (v) => String(v)],
+  ['ttfb', 'TTFB', (v) => `${v}ms`],
+  ['fcp', 'FCP', (v) => `${v}ms`],
+  ['speedIndex', 'Speed Index', (v) => `${v}ms`],
+];
 
 /** Thư mục build output / dependency — không đính kèm vào prompt (AI sửa source, không sửa artifact). */
 const BUILD_OUTPUT_DIR = /(^|\/)(dist|build|out|\.next|\.output|\.svelte-kit|node_modules|coverage)\//i;
@@ -34,21 +50,25 @@ function isMinified(content: string): boolean {
   return false;
 }
 
-/** Sinh prompt (markdown, tiếng Việt) mô tả các finding để người dùng dán vào AI coding tool tự sửa tại source. */
+/**
+ * Sinh prompt (markdown, tiếng Việt) mô tả các finding để người dùng dán vào AI coding tool tự sửa tại source.
+ * Có projectDir (scan repo/local) ⇒ đính kèm nội dung file liên quan; không có (scan URL) ⇒ chỉ mô tả finding
+ * runtime kèm hướng dẫn để AI tự điều tra codebase tìm nguyên nhân gốc.
+ */
 export async function buildFixPrompt(
   findings: Finding[],
-  projectDir: string,
   opts: BuildFixPromptOptions = {},
 ): Promise<FixPromptResult> {
-  const includeFiles = opts.includeFiles !== false;
+  const hasSource = !!opts.projectDir;
+  const includeFiles = hasSource && opts.includeFiles !== false;
   const sorted = [...findings].sort((a, b) => (PRIORITY[a.severity] ?? 3) - (PRIORITY[b.severity] ?? 3));
 
   const candidatePaths =
     includeFiles && sorted.length > 0
-      ? (await collectRelevantPaths(projectDir, sorted)).filter((p) => !BUILD_OUTPUT_DIR.test(p))
+      ? (await collectRelevantPaths(opts.projectDir!, sorted)).filter((p) => !BUILD_OUTPUT_DIR.test(p))
       : [];
   const rawFiles = candidatePaths.length > 0
-    ? await readProjectFiles(projectDir, candidatePaths, { maxFiles: 10, maxLinesPerFile: 350 })
+    ? await readProjectFiles(opts.projectDir!, candidatePaths, { maxFiles: 10, maxLinesPerFile: 350 })
     : {};
   const files: Record<string, string> = {};
   for (const [p, content] of Object.entries(rawFiles)) {
@@ -62,26 +82,41 @@ export async function buildFixPrompt(
 
   const sections: string[] = [];
 
-  sections.push(`# Nhiệm vụ: sửa các vấn đề hiệu năng / bảo mật / SEO trong source code
+  sections.push(
+    hasSource
+      ? `# Nhiệm vụ: sửa các vấn đề hiệu năng / bảo mật / SEO trong source code
 
 Bạn là kỹ sư frontend senior. Dưới đây là kết quả audit (Web Performance & Security Audit) của project đang mở trong thư mục làm việc này.
-Hãy đọc kỹ từng finding và **sửa trực tiếp trong source code**.`);
+Hãy đọc kỹ từng finding và **sửa trực tiếp trong source code**.`
+      : `# Nhiệm vụ: sửa các vấn đề hiệu năng / bảo mật / SEO trong source code
+
+Bạn là kỹ sư frontend senior. Dưới đây là kết quả audit (Web Performance & Security Audit) đo trực tiếp trên website đang chạy (runtime), nên các finding **không kèm đường dẫn file cụ thể**.
+Hãy điều tra codebase của project đang mở trong thư mục làm việc này, tự tìm nơi sinh ra từng vấn đề và **sửa trực tiếp trong source code** ở nguyên nhân gốc.`,
+  );
 
   const contextLines: string[] = [];
   if (opts.repo) contextLines.push(`- Repo: ${opts.repo.owner}/${opts.repo.name} (branch: ${opts.repo.branch})`);
   if (opts.liveUrl) contextLines.push(`- URL đang chạy (để kiểm chứng sau khi fix): ${opts.liveUrl}`);
+  const cwvLine = opts.cwv ? renderCwvLine(opts.cwv) : null;
+  if (cwvLine) contextLines.push(`- Số liệu đo được: ${cwvLine}`);
   if (contextLines.length > 0) sections.push(`## Ngữ cảnh\n\n${contextLines.join('\n')}`);
 
   sections.push(renderFindings(sorted));
 
-  sections.push(`## Yêu cầu
-
-- Sửa đúng root cause của từng finding ở trên, không dùng giải pháp tạm thời (workaround).
-- Giữ nguyên hành vi (behavior) hiện tại của app; chỉ thay đổi những gì cần thiết.
-- Giữ nguyên code style, thứ tự import và formatting hiện có của từng file.
-- Không thêm npm dependency mới — ưu tiên API built-in hoặc package đã có trong package.json.
-- Nếu một finding không thể sửa được vì thiếu ngữ cảnh, ghi rõ lý do thay vì bỏ qua im lặng.
-- Sau khi sửa xong, tóm tắt danh sách file đã thay đổi kèm lý do (tiếng Việt).`);
+  const requirementLines = [
+    '- Sửa đúng root cause của từng finding ở trên, không dùng giải pháp tạm thời (workaround).',
+    '- Giữ nguyên hành vi (behavior) hiện tại của app; chỉ thay đổi những gì cần thiết.',
+    '- Giữ nguyên code style, thứ tự import và formatting hiện có của từng file.',
+    '- Không thêm npm dependency mới — ưu tiên API built-in hoặc package đã có trong package.json.',
+    '- Nếu một finding không thể sửa được vì thiếu ngữ cảnh, ghi rõ lý do thay vì bỏ qua im lặng.',
+    '- Sau khi sửa xong, tóm tắt danh sách file đã thay đổi kèm lý do (tiếng Việt).',
+  ];
+  if (!hasSource) {
+    requirementLines.unshift(
+      '- Các finding đo từ runtime nên không kèm file — hãy tìm kiếm trong codebase (tên component, header, thư viện…) để xác định vị trí cần sửa trước khi sửa.',
+    );
+  }
+  sections.push(`## Yêu cầu\n\n${requirementLines.join('\n')}`);
 
   if (includedFiles.length > 0) {
     const filesText = Object.entries(files)
@@ -93,6 +128,12 @@ ${filesText}`);
   }
 
   return { prompt: sections.join('\n\n'), includedFiles };
+}
+
+function renderCwvLine(cwv: CWVMetrics): string {
+  return CWV_LABELS.filter(([key]) => typeof cwv[key] === 'number')
+    .map(([key, label, fmt]) => `${label}: ${fmt(cwv[key] as number)}`)
+    .join(' · ');
 }
 
 function renderFindings(findings: Finding[]): string {
