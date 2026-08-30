@@ -1,10 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
-// CỐ TÌNH import nguyên khối thư viện nặng — để WPSA bắt lỗi bundle
-import _ from 'lodash';
-import moment from 'moment';
-import { LineChart, Line, XAxis, YAxis, Tooltip } from 'recharts';
-// CỐ TÌNH import qua barrel file — để WPSA phát hiện barrel import
-import { BigButton } from './components';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+// FIX: import subpath hàm cần dùng thay vì toàn bộ lodash
+import sortBy from 'lodash/sortBy';
+import BigButton from './components/Button.jsx';
+
+const LineChart = lazy(() => import('recharts').then((m) => ({ default: m.LineChart })));
+const Line = lazy(() => import('recharts').then((m) => ({ default: m.Line })));
+const XAxis = lazy(() => import('recharts').then((m) => ({ default: m.XAxis })));
+const YAxis = lazy(() => import('recharts').then((m) => ({ default: m.YAxis })));
+const Tooltip = lazy(() => import('recharts').then((m) => ({ default: m.Tooltip })));
 
 /**
  * Fixture chứa CỐ TÌNH 3 loại bug runtime để demo WPSA:
@@ -43,10 +46,10 @@ function LeakyCounter() {
 
 function SlowText({ value }) {
   // BUG 4: tính toán nặng mỗi render, không useMemo
-  const items = _.sortBy(Array.from({ length: 3000 }, (_, i) => (i * 7 + value.length) % 997));
+  const items = sortBy(Array.from({ length: 3000 }, (_, i) => (i * 7 + value.length) % 997));
   return (
     <p>
-      {moment(items[0]).format('YYYY')} — {items.length} items sorted, value.length={value.length}
+      {new Date(items[0]).getFullYear()} — {items.length} items sorted, value.length={value.length}
     </p>
   );
 }
@@ -62,13 +65,15 @@ export default function App() {
       <BigButton onClick={() => setText((t) => t + '!')}>Thêm "!"</BigButton>
       <LeakyCounter />
       <SlowText value={text} />
-      {/* LineChart import tĩnh nhưng không render — recharts bị kéo vào bundle chính */}
-      <LineChart width={0} height={0} data={[]}>
-        <Line dataKey="v" />
-        <XAxis />
-        <YAxis />
-        <Tooltip />
-      </LineChart>
+      {/* LineChart lazy load — recharts không bị kéo vào bundle chính */}
+      <Suspense fallback={null}>
+        <LineChart width={0} height={0} data={[]}>
+          <Line dataKey="v" />
+          <XAxis />
+          <YAxis />
+          <Tooltip />
+        </LineChart>
+      </Suspense>
     </div>
   );
 }

@@ -1,12 +1,17 @@
 // Mock OpenAI-compatible server để verify luồng fix-preview không cần API key thật
 const http = require('node:http');
 
-const fixedApp = `import { useEffect, useRef, useState } from 'react';
+const fixedApp = `import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 // FIX: import từng hàm lodash thay vì nguyên khối
 import debounce from 'lodash/debounce';
 // FIX: thay moment bằng Intl API nội tuyến
-import { LineChart, Line, XAxis, YAxis, Tooltip } from 'recharts';
-import { BigButton } from './components';
+import BigButton from './components/Button.jsx';
+
+const LineChart = lazy(() => import('recharts').then((m) => ({ default: m.LineChart })));
+const Line = lazy(() => import('recharts').then((m) => ({ default: m.Line })));
+const XAxis = lazy(() => import('recharts').then((m) => ({ default: m.XAxis })));
+const YAxis = lazy(() => import('recharts').then((m) => ({ default: m.YAxis })));
+const Tooltip = lazy(() => import('recharts').then((m) => ({ default: m.Tooltip })));
 
 function LeakyCounter() {
   const [n, setN] = useState(0);
@@ -60,12 +65,14 @@ export default function App() {
       <BigButton onClick={() => setText((t) => t + '!')}>Thêm "!"</BigButton>
       <LeakyCounter />
       <SlowText value={text} />
-      <LineChart width={0} height={0} data={[]}>
-        <Line dataKey="v" />
-        <XAxis />
-        <YAxis />
-        <Tooltip />
-      </LineChart>
+      <Suspense fallback={null}>
+        <LineChart width={0} height={0} data={[]}>
+          <Line dataKey="v" />
+          <XAxis />
+          <YAxis />
+          <Tooltip />
+        </LineChart>
+      </Suspense>
     </div>
   );
 }
