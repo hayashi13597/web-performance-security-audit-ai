@@ -15,12 +15,12 @@ export function FindingCard({
   finding,
   selected,
   onToggle,
-  disabled,
+  disabled = false,
 }: {
   finding: Finding;
   selected: boolean;
   onToggle: (id: string) => void;
-  disabled: boolean;
+  disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const metrics = Object.entries(finding.metrics ?? {});
@@ -28,16 +28,14 @@ export function FindingCard({
   return (
     <div className="rounded-xl border border-slate-800 bg-slate-900/60 transition hover:border-slate-700">
       <div className="flex items-start gap-3 p-4">
-        {finding.aiFixable && (
-          <input
-            type="checkbox"
-            checked={selected}
-            disabled={disabled}
-            onChange={() => onToggle(finding.id)}
-            title="Đưa vào PR sửa lỗi"
-            className="mt-1 h-4 w-4 shrink-0 cursor-pointer accent-sky-500"
-          />
-        )}
+        <input
+          type="checkbox"
+          checked={selected}
+          disabled={disabled}
+          onChange={() => onToggle(finding.id)}
+          title="Đưa vào prompt / PR sửa lỗi"
+          className="mt-1 h-4 w-4 shrink-0 cursor-pointer accent-sky-500"
+        />
         <button onClick={() => setOpen(!open)} className="flex-1 text-left">
           <div className="flex flex-wrap items-center gap-2">
             <span className={`rounded-md border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${SEVERITY_BADGE[finding.severity]}`}>

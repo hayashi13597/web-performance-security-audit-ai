@@ -14,7 +14,7 @@ const MAX_FINDINGS_PER_CALL = 12;
 const PRIORITY: Record<string, number> = { critical: 0, warning: 1, info: 2 };
 
 /** Gom các file liên quan: file trong findings + build configs + package.json. */
-async function collectRelevantPaths(projectDir: string, findings: Finding[]): Promise<string[]> {
+export async function collectRelevantPaths(projectDir: string, findings: Finding[]): Promise<string[]> {
   const paths = new Set<string>();
   for (const f of findings) {
     for (const file of f.files ?? []) paths.add(file.path);

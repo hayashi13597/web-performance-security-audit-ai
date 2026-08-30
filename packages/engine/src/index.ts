@@ -11,6 +11,7 @@ export { runRerenderScan, type RerenderScanResult } from './detectors/rerender-d
 export { runMemoryScan, type MemoryScanResult, type MemorySample } from './detectors/memory-detector.js';
 
 export { generateFixPlan } from './ai/fix-generator.js';
+export { buildFixPrompt, type FixPromptResult, type BuildFixPromptOptions } from './ai/prompt-builder.js';
 export { aiConfigFromEnv } from './ai/client.js';
 export type { AiConfig } from './ai/types.js';
 
