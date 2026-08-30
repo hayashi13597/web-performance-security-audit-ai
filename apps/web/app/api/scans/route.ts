@@ -1,4 +1,6 @@
+import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
+import { GITHUB_SESSION_COOKIE, getSession } from '@/lib/github-session';
 import { createScanJob, jobTarget, listRecentScans, pruneOldJobs } from '@/lib/job-store';
 import type { ScanRequest } from '@wpsa/engine';
 
@@ -60,9 +62,15 @@ export async function POST(req: Request): Promise<NextResponse> {
     if (!repoUrl) {
       return NextResponse.json({ error: 'Thiếu URL GitHub repo' }, { status: 400 });
     }
+    let token = body.token?.trim() || undefined;
+    if (!token) {
+      // Không dán PAT → dùng access token từ phiên GitHub OAuth (chỉ tồn tại trong RAM)
+      const jar = await cookies();
+      token = getSession(jar.get(GITHUB_SESSION_COOKIE)?.value)?.token;
+    }
     request = {
       mode: 'repo',
-      source: { kind: 'github', repoUrl, token: body.token?.trim() || undefined },
+      source: { kind: 'github', repoUrl, token },
       liveUrl: body.liveUrl ? normalizeUrl(body.liveUrl) : undefined,
       formFactor,
       memoryRounds,
