@@ -34,7 +34,7 @@ export function FindingCard({
             checked={selected}
             disabled={disabled}
             onChange={() => onToggle(finding.id)}
-            title="Đưa vào PR sửa lỗi"
+            title="Đưa vào prompt / PR sửa lỗi"
             className="mt-1 h-4 w-4 shrink-0 cursor-pointer accent-sky-500"
           />
         )}

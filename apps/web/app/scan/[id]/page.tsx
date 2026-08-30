@@ -14,6 +14,7 @@ import type {
 import { CWVCards, ScoreGauge } from '@/components/CWVCards';
 import { DiffView } from '@/components/DiffView';
 import { FindingCard } from '@/components/FindingCard';
+import { PromptDialog } from '@/components/PromptDialog';
 import { ScanProgress } from '@/components/ScanProgress';
 import { TokenDialog } from '@/components/TokenDialog';
 
@@ -54,6 +55,12 @@ export default function ScanPage({ params }: { params: Promise<{ id: string }> }
   const [dialogOpen, setDialogOpen] = useState(false);
   const [prBusy, setPrBusy] = useState(false);
   const [prResult, setPrResult] = useState<PRResult | null>(null);
+
+  // ===== Flow sinh prompt copy sang AI của người dùng =====
+  const [promptOpen, setPromptOpen] = useState(false);
+  const [promptData, setPromptData] = useState<{ prompt: string; includedFiles: string[] } | null>(null);
+  const [promptBusy, setPromptBusy] = useState(false);
+  const [promptIncludeFiles, setPromptIncludeFiles] = useState(true);
 
   const poll = useCallback(async () => {
     const res = await fetch(`/api/scans/${id}`);
@@ -132,6 +139,27 @@ export default function ScanPage({ params }: { params: Promise<{ id: string }> }
       setFlowError(err instanceof Error ? err.message : String(err));
     } finally {
       setGenerating(false);
+    }
+  }
+
+  async function generatePrompt(includeFiles: boolean) {
+    setPromptIncludeFiles(includeFiles);
+    setPromptBusy(true);
+    setFlowError(null);
+    try {
+      const res = await fetch(`/api/scans/${id}/fix-prompt`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ findingIds: [...selectedFindingIds], includeFiles }),
+      });
+      const json = (await res.json()) as { prompt: string; includedFiles: string[] } & { error?: string };
+      if (!res.ok) throw new Error(json.error ?? 'Sinh prompt thất bại');
+      setPromptData({ prompt: json.prompt, includedFiles: json.includedFiles });
+      setPromptOpen(true);
+    } catch (err) {
+      setFlowError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setPromptBusy(false);
     }
   }
 
@@ -245,8 +273,9 @@ export default function ScanPage({ params }: { params: Promise<{ id: string }> }
 
       {!data.aiConfigured && (
         <div className="mb-6 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-xs text-amber-200">
-          ⚠️ Chưa cấu hình AI (AI_API_KEY) — báo cáo vẫn đầy đủ, nhưng không sinh được code fix và tạo PR.
-          Đặt biến môi trường theo <code className="rounded bg-black/30 px-1">.env.example</code> rồi restart.
+          ⚠️ Chưa cấu hình AI (AI_API_KEY) — không sinh được preview fix tự động và tạo PR. Với scan repo/thư mục, bạn vẫn
+          có thể <span className="font-semibold">tạo prompt để copy sang AI của bạn</span> ở panel bên dưới. Đặt biến môi
+          trường theo <code className="rounded bg-black/30 px-1">.env.example</code> rồi restart để bật đầy đủ tính năng.
         </div>
       )}
 
@@ -327,7 +356,7 @@ export default function ScanPage({ params }: { params: Promise<{ id: string }> }
               key={f.id}
               finding={f}
               selected={selectedFindingIds.has(f.id)}
-              disabled={!data.aiConfigured}
+              disabled={!report?.sourceDir}
               onToggle={(fid) =>
                 setSelectedFindingIds((prev) => {
                   const next = new Set(prev);
@@ -346,8 +375,8 @@ export default function ScanPage({ params }: { params: Promise<{ id: string }> }
         </div>
       </div>
 
-      {/* Flow sinh fix + PR */}
-      {aiFixableCount > 0 && data.aiConfigured && (
+      {/* Flow sinh fix + PR + prompt copy */}
+      {aiFixableCount > 0 && (
         <div className="sticky bottom-4 mt-10 rounded-2xl border border-slate-700 bg-slate-900/95 p-4 shadow-2xl shadow-black/50 backdrop-blur">
           {flowError && (
             <div className="mb-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">{flowError}</div>
@@ -404,13 +433,21 @@ export default function ScanPage({ params }: { params: Promise<{ id: string }> }
                 Đã chọn <span className="font-bold text-white">{selectedFindingIds.size}</span>/{aiFixableCount} finding có thể
                 fix tự động.
               </p>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <button onClick={() => setSelectedFindingIds(new Set(report!.findings.filter((f) => f.aiFixable).map((f) => f.id)))} className="rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-300 hover:bg-slate-800">
                   Chọn tất cả
                 </button>
                 <button
+                  onClick={() => generatePrompt(promptIncludeFiles)}
+                  disabled={promptBusy || selectedFindingIds.size === 0}
+                  className="rounded-lg bg-violet-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-violet-400 disabled:opacity-40"
+                >
+                  {promptBusy ? 'Đang sinh prompt…' : '📋 Tạo prompt để copy'}
+                </button>
+                <button
                   onClick={generatePreview}
-                  disabled={generating || selectedFindingIds.size === 0}
+                  disabled={generating || !data.aiConfigured || selectedFindingIds.size === 0}
+                  title={data.aiConfigured ? undefined : 'Cần cấu hình AI_BASE_URL, AI_API_KEY, AI_MODEL trong .env'}
                   className="rounded-lg bg-sky-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-sky-400 disabled:opacity-40"
                 >
                   {generating ? 'AI đang phân tích… (có thể mất ~1 phút)' : '🤖 Sinh preview fix bằng AI'}
@@ -428,6 +465,18 @@ export default function ScanPage({ params }: { params: Promise<{ id: string }> }
           error={flowError}
           onSubmit={createPR}
           onClose={() => setDialogOpen(false)}
+        />
+      )}
+
+      {promptOpen && promptData && (
+        <PromptDialog
+          prompt={promptData.prompt}
+          fileCount={promptData.includedFiles.length}
+          includeFiles={promptIncludeFiles}
+          busy={promptBusy}
+          error={flowError}
+          onToggleFiles={generatePrompt}
+          onClose={() => setPromptOpen(false)}
         />
       )}
     </main>
