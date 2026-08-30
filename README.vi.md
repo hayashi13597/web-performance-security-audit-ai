@@ -6,7 +6,7 @@
 
 **Quét URL / repo GitHub / thư mục local → phát hiện lãng phí re-render, bundle quá lớn, memory leak, vi phạm bảo mật & SEO → AI sinh bản fix → tạo Pull Request chỉ với 1 click.**
 
-[![Node](https://img.shields.io/badge/node-%E2%89%A520-339933?logo=node.js&logoColor=white)](https://nodejs.org)
+[![Node](https://img.shields.io/badge/node-%E2%89%A522.13-339933?logo=node.js&logoColor=white)](https://nodejs.org)
 [![pnpm](https://img.shields.io/badge/pnpm-%E2%89%A59-F69220?logo=pnpm&logoColor=white)](https://pnpm.io)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
 [![Next.js](https://img.shields.io/badge/Next.js-15-black?logo=next.js)](https://nextjs.org)
@@ -202,6 +202,7 @@ Quyền PAT cần thiết:
 | Method | Endpoint | Mô tả |
 |---|---|---|
 | `POST` | `/api/scans` | Tạo job scan (chạy background) |
+| `GET` | `/api/scans` | Lịch sử các lần scan gần đây (20 job mới nhất) |
 | `GET` | `/api/scans/[id]` | Trạng thái + báo cáo (poll ~1.5s) |
 | `POST` | `/api/scans/[id]/fix-preview` | AI sinh preview fix kèm diff (cần AI key) |
 | `POST` | `/api/scans/[id]/pull-request` | Tạo PR từ các fix đã chọn (cần PAT) |
@@ -250,7 +251,7 @@ E2E đã verify: scan `examples/leaky-app` (local + live) bắt đủ 4 nhóm l�
 | Tạo PR trả **404 Not Found** | Hai nguyên nhân thường gặp: (1) branch gốc gõ sai / không tồn tại; (2) PAT fine-grained thiếu quyền *Contents* hoặc *Pull requests* read/write, hoặc repo không nằm trong *Repository access* — GitHub trả 404 thay vì 403. |
 | Tải repo lỗi giải nén | Tarball vượt giới hạn 200MB hoặc URL repo sai định dạng. |
 | Tên component trên biểu đồ bị rút gọn (`nZ`, `C`) | Target là **production build** — React xoá tên function ở bản prod. Quét bản dev build sẽ có tên đầy đủ. |
-| Lịch sử scan biến mất / job cũ báo lỗi "restart giữa chừng" | Job lưu trong SQLite (`apps/web/.data/wpsa-jobs.db`) nên sống qua restart — job đang chạy khi server tắt sẽ bị đánh dấu lỗi. Job đã xong được dọn sau 6 tiếng (chỉnh bằng `WPSA_JOB_TTL_HOURS`). |
+| Lịch sử scan biến mất / job cũ báo lỗi "Server đã restart giữa chừng scan" | Job lưu trong SQLite (`apps/web/.data/wpsa-jobs.db`) nên sống qua restart — job đang chạy khi server tắt sẽ bị đánh dấu lỗi. Job đã xong được dọn sau 6 tiếng (chỉnh bằng `WPSA_JOB_TTL_HOURS`). |
 | Không thấy nút sinh fix AI | Chưa cấu hình `AI_API_KEY` trong `.env` — thêm xong nhớ restart app. |
 
 ## Lộ trình
