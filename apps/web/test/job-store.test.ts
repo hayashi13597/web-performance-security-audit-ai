@@ -1,3 +1,4 @@
+import { spawn, spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
@@ -125,16 +126,58 @@ describe('job-store (SQLite)', () => {
     expect(getScanJob(freshJob.id)).toBeDefined();
   });
 
-  it('job sống qua restart; job đang chạy dở bị đánh dấu lỗi khi mở lại', () => {
+  it('job sống qua restart; job của process đã chết bị đánh dấu lỗi khi mở lại', () => {
     mocks.runScan.mockImplementation(() => new Promise(() => {}));
     const doneJob = createScanJob(urlRequest);
     updateScanJob(doneJob.id, { status: 'done' });
     const runningJob = createScanJob(urlRequest);
     updateScanJob(runningJob.id, { status: 'running' });
+    // Giả lập chủ job là process đã tắt (pid của child đã exit ngay khi spawnSync trả về)
+    const { pid: deadPid } = spawnSync(process.execPath, ['-e', '']);
+    getJobDb().prepare('UPDATE jobs SET owner_pid = ? WHERE id = ?').run(deadPid, runningJob.id);
 
     closeJobDb(); // mô phỏng restart — lần get tiếp theo mở lại cùng file DB
 
     expect(getScanJob(doneJob.id)?.status).toBe('done');
+    const reopened = getScanJob(runningJob.id);
+    expect(reopened?.status).toBe('error');
+    expect(reopened?.error).toContain('restart');
+  });
+
+  it('job của process hiện tại không bị đánh dấu lỗi khi mở lại DB', () => {
+    mocks.runScan.mockImplementation(() => new Promise(() => {}));
+    const runningJob = createScanJob(urlRequest);
+    updateScanJob(runningJob.id, { status: 'running' }); // owner_pid = process đang chạy test
+
+    closeJobDb();
+
+    expect(getScanJob(runningJob.id)?.status).toBe('running');
+  });
+
+  it('job của process khác đang sống giữ nguyên khi mở lại DB', () => {
+    mocks.runScan.mockImplementation(() => new Promise(() => {}));
+    const runningJob = createScanJob(urlRequest);
+    updateScanJob(runningJob.id, { status: 'running' });
+    const owner = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 10_000)']);
+    if (owner.pid === undefined) throw new Error('Không spawn được process giả lập');
+    getJobDb().prepare('UPDATE jobs SET owner_pid = ? WHERE id = ?').run(owner.pid, runningJob.id);
+
+    try {
+      closeJobDb();
+      expect(getScanJob(runningJob.id)?.status).toBe('running');
+    } finally {
+      owner.kill();
+    }
+  });
+
+  it('job cũ không có owner_pid (DB trước khi có cột) vẫn bị đánh dấu lỗi', () => {
+    mocks.runScan.mockImplementation(() => new Promise(() => {}));
+    const runningJob = createScanJob(urlRequest);
+    updateScanJob(runningJob.id, { status: 'running' });
+    getJobDb().prepare('UPDATE jobs SET owner_pid = NULL WHERE id = ?').run(runningJob.id);
+
+    closeJobDb();
+
     const reopened = getScanJob(runningJob.id);
     expect(reopened?.status).toBe('error');
     expect(reopened?.error).toContain('restart');

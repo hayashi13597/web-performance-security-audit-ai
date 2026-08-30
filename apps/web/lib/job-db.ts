@@ -7,6 +7,17 @@ import type { ScanJob } from './job-store';
 // Gắn kết nối trên globalThis để sống sót qua Next.js hot-reload ở môi trường dev
 const globalStore = globalThis as unknown as { __wpsaJobDb?: DatabaseSync };
 
+/** Kiểm tra process còn sống (signal 0 chỉ probe, không gửi gì) — EPERM nghĩa là tồn tại nhưng không có quyền. */
+function isPidAlive(pid: number): boolean {
+  if (pid === process.pid) return true;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === 'EPERM';
+  }
+}
+
 export function getJobDb(): DatabaseSync {
   if (globalStore.__wpsaJobDb) return globalStore.__wpsaJobDb;
 
@@ -24,15 +35,31 @@ export function getJobDb(): DatabaseSync {
       error         TEXT,
       ai_configured INTEGER NOT NULL,
       last_fix_plan TEXT,
-      created_at    INTEGER NOT NULL
+      created_at    INTEGER NOT NULL,
+      owner_pid     INTEGER
     );
     CREATE INDEX IF NOT EXISTS jobs_created_at ON jobs (created_at);
   `);
 
+  // DB cũ chưa có cột owner_pid (dùng để biết job thuộc process nào khi nhiều process chung WPSA_DB_PATH).
+  const columns = db.prepare('PRAGMA table_info(jobs)').all() as Array<{ name: string }>;
+  if (!columns.some((c) => c.name === 'owner_pid')) {
+    db.exec('ALTER TABLE jobs ADD COLUMN owner_pid INTEGER');
+  }
+
   // Job đang chạy khi process tắt lần trước không thể chạy tiếp — đánh dấu lỗi rõ ràng.
-  db.exec(
-    "UPDATE jobs SET status = 'error', error = 'Server đã restart giữa chừng scan' WHERE status IN ('queued', 'running')",
-  );
+  // Chỉ dọn job của process đã chết: process khác đang sống chung WPSA_DB_PATH giữ nguyên job của họ.
+  const activeJobs = db
+    .prepare("SELECT id, owner_pid FROM jobs WHERE status IN ('queued', 'running')")
+    .all() as unknown as Array<{ id: string; owner_pid: number | null }>;
+  const orphanIds = activeJobs
+    .filter(({ owner_pid }) => owner_pid === null || !isPidAlive(Number(owner_pid)))
+    .map(({ id }) => id);
+  if (orphanIds.length > 0) {
+    db.prepare(
+      `UPDATE jobs SET status = 'error', error = 'Server đã restart giữa chừng scan' WHERE id IN (${orphanIds.map(() => '?').join(', ')})`,
+    ).run(...orphanIds);
+  }
 
   globalStore.__wpsaJobDb = db;
   return db;
@@ -62,8 +89,8 @@ export interface JobPatch {
 export function saveJob(job: ScanJob): void {
   getJobDb()
     .prepare(
-      `INSERT INTO jobs (id, request, status, stages, report, error, ai_configured, last_fix_plan, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO jobs (id, request, status, stages, report, error, ai_configured, last_fix_plan, created_at, owner_pid)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       job.id,
@@ -75,6 +102,7 @@ export function saveJob(job: ScanJob): void {
       job.aiConfigured ? 1 : 0,
       job.lastFixPlan ? JSON.stringify(job.lastFixPlan) : null,
       job.createdAt,
+      process.pid,
     );
 }
 

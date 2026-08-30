@@ -24,6 +24,7 @@ function normalizeUrl(raw: string): string {
 
 /** Lịch sử scan gần nhất (job lưu SQLite nên sống qua restart). */
 export async function GET(): Promise<NextResponse> {
+  pruneOldJobs(); // job hết hạn TTL không được xuất hiện trong lịch sử
   const scans = listRecentScans(20).map((j) => ({
     id: j.id,
     status: j.status,
