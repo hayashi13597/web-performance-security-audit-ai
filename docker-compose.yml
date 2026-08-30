@@ -1,0 +1,32 @@
+services:
+  wpsa:
+    build: .
+    image: wpsa:local
+    container_name: wpsa
+    ports:
+      - "3000:3000"
+    # Chrome cần shared memory lớn hơn mặc định 64MB của Docker.
+    shm_size: "1g"
+    environment:
+      # compose tự đọc file .env ở thư mục gốc repo — điền key trong đó là đủ.
+      AI_BASE_URL: ${AI_BASE_URL:-}
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_MODEL: ${AI_MODEL:-}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+      WPSA_PUBLIC_URL: ${WPSA_PUBLIC_URL:-}
+    volumes:
+      # Lịch sử scan (SQLite) nằm ở volume, sống qua các lần up/down.
+      - wpsa-data:/data
+      # Chế độ "Local folder": mount thư mục dự án vào container rồi chọn /workspace
+      # trong folder picker, ví dụ:  - D:/projects:/workspace
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/scans').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+
+volumes:
+  wpsa-data:

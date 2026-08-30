@@ -29,6 +29,7 @@
 - [Kiến trúc](#kiến-trúc)
 - [Yêu cầu hệ thống](#yêu-cầu-hệ-thống)
 - [Cài đặt và chạy nhanh](#cài-đặt-và-chạy-nhanh)
+- [Docker](#docker)
 - [Demo với fixture cố tình mắc lỗi](#demo-với-fixture-cố-tình-mắc-lỗi)
 - [Ba chế độ quét](#ba-chế-độ-quét)
 - [Cấu hình AI](#cấu-hình-ai)
@@ -157,6 +158,28 @@ Quét repo private và tạo PR không cần dán PAT. Cấu hình một lần:
 4. Restart app, rồi bấm **Đăng nhập với GitHub** ở đầu dashboard.
 
 Access token chỉ nằm trong RAM của server trong 8 tiếng (hoặc tới khi restart) và không bao giờ ghi xuống đĩa hay database. Không cấu hình thì ô dán PAT tay vẫn hoạt động như cũ.
+
+## Docker
+
+Máy không có Node.js, pnpm hay Chrome? Chạy tất cả trong container — image có sẵn Chromium hệ thống cho Lighthouse lẫn Chromium của Playwright cho các probe re-render/memory:
+
+```bash
+docker compose up --build   # dashboard tại http://localhost:3000
+```
+
+Hoặc không qua compose:
+
+```bash
+docker build -t wpsa .
+docker run --rm -p 3000:3000 -v wpsa-data:/data --shm-size 1g --env-file .env wpsa
+```
+
+Lưu ý:
+
+- **Cấu hình** — `docker compose` tự đọc `.env` ở thư mục gốc repo (key AI, GitHub OAuth app…). Với `docker run` thường, truyền `--env-file .env` hoặc cờ `-e VAR=...`. Lịch sử scan nằm ở volume `wpsa-data` (`WPSA_DB_PATH=/data/wpsa-jobs.db` trong container) và sống qua các lần restart.
+- **Chế độ quét** — URL và GitHub repo chạy được ngay. Chế độ Thư mục local cần bind mount: thêm `-v /duong/dan/projects:/workspace` (compose: bỏ comment dòng ví dụ trong `docker-compose.yml`), rồi chọn `/workspace` trong folder picker.
+- **GitHub OAuth** — nếu dashboard không chạy ở `http://localhost:3000`, đặt `WPSA_PUBLIC_URL` để callback URL đã đăng ký khớp.
+- Lần build đầu mất vài phút (tải Chromium + node_modules); `--shm-size 1g` để Chrome đủ shared memory, không bị crash.
 
 ## Demo với fixture cố tình mắc lỗi
 
@@ -289,7 +312,7 @@ E2E đã verify: scan `examples/leaky-app` (local + live) bắt đủ 4 nhóm l�
 
 - [x] Lưu job vào SQLite thay vì in-memory (giữ lịch sử qua restart)
 - [x] GitHub App / OAuth thay cho việc dán PAT tay (đăng nhập OAuth App; access token chỉ trong RAM)
-- [ ] Docker image chạy 1 lệnh
+- [x] Docker image chạy 1 lệnh
 - [ ] CLI độc lập (scan không cần dashboard)
 - [ ] Xuất báo cáo PDF/HTML
 - [ ] Re-render detector cho Vue/Svelte (hiện chỉ hỗ trợ React)

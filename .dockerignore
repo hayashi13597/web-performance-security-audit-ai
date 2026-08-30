@@ -1,0 +1,12 @@
+# Giữ build context nhỏ và không bake secret vào image.
+**/node_modules
+**/dist
+**/.next
+**/.data
+**/*.tsbuildinfo
+.git
+.env
+.env.local
+.env.*.local
+docs
+.zcode

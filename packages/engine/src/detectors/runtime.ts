@@ -1,5 +1,6 @@
 import type { Browser, BrowserContext, CDPSession, Page } from 'playwright';
 import { chromium } from 'playwright';
+import { containerChromiumArgs } from './sandbox.js';
 
 export interface RuntimeSession {
   browser: Browser;
@@ -17,7 +18,7 @@ export interface LaunchOptions {
 
 /** Launch Chromium (Playwright) + mở page với CDP session sẵn sàng. */
 export async function launchSession(options: LaunchOptions): Promise<RuntimeSession> {
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({ headless: true, args: containerChromiumArgs() });
   const contextOptions =
     options.formFactor === 'mobile'
       ? {

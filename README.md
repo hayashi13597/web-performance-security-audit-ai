@@ -29,6 +29,7 @@
 - [Architecture](#architecture)
 - [Requirements](#requirements)
 - [Installation and quick start](#installation-and-quick-start)
+- [Docker](#docker)
 - [Demo with an intentionally broken fixture](#demo-with-an-intentionally-broken-fixture)
 - [Three scan modes](#three-scan-modes)
 - [AI configuration](#ai-configuration)
@@ -160,6 +161,28 @@ Scan private repos and open PRs without pasting a PAT. One-time setup:
 4. Restart the app, then click **Đăng nhập với GitHub** at the top of the dashboard.
 
 The access token lives only in server memory for 8 hours (or until the server restarts) and is never written to disk or the database. Without this config, the manual PAT input still works exactly as before.
+
+## Docker
+
+No Node.js, pnpm, or Chrome on the machine? Run everything from a container — the image bundles Chromium for Lighthouse *and* the Playwright Chromium for the re-render/memory probes:
+
+```bash
+docker compose up --build   # dashboard at http://localhost:3000
+```
+
+Or without compose:
+
+```bash
+docker build -t wpsa .
+docker run --rm -p 3000:3000 -v wpsa-data:/data --shm-size 1g --env-file .env wpsa
+```
+
+Notes:
+
+- **Configuration** — `docker compose` reads the repo-root `.env` automatically (AI keys, GitHub OAuth app, …). With plain `docker run`, pass `--env-file .env` or `-e VAR=...`. Scan history lives in the `wpsa-data` volume (`WPSA_DB_PATH=/data/wpsa-jobs.db` inside the container) and survives restarts.
+- **Scan modes** — URL and GitHub repo work out of the box. Local folder mode needs a bind mount: add `-v /path/to/your/projects:/workspace` (compose: uncomment the example line), then pick `/workspace` in the folder picker.
+- **GitHub OAuth** — if the dashboard is not at `http://localhost:3000`, set `WPSA_PUBLIC_URL` so the registered callback URL matches.
+- The first build takes a few minutes (downloads Chromium + node_modules); `--shm-size 1g` gives Chrome enough shared memory to not crash.
 
 ## Demo with an intentionally broken fixture
 
@@ -309,7 +332,7 @@ E2E verified: scanning `examples/leaky-app` (local + live) catches all 4 issue g
 
 - [x] Persist jobs to SQLite instead of in-memory (keep history across restarts)
 - [x] GitHub App / OAuth instead of pasting a PAT (OAuth App sign-in; access token kept in server RAM only)
-- [ ] One-command Docker image
+- [x] One-command Docker image
 - [ ] Standalone CLI (scan without the dashboard)
 - [ ] PDF/HTML report export
 - [ ] Re-render detector for Vue/Svelte (React only today)

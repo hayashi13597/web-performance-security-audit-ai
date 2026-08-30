@@ -1,5 +1,6 @@
 import lighthouse from 'lighthouse';
 import { killAll, launch } from 'chrome-launcher';
+import { containerChromiumArgs } from './sandbox.js';
 import type { CWVMetrics, Finding } from '../types.js';
 
 export interface LighthouseScanOptions {
@@ -200,7 +201,15 @@ export async function runLighthouseScan(
   options: LighthouseScanOptions,
 ): Promise<LighthouseScanResult> {
   const { formFactor } = options;
-  const chrome = await launch({ chromeFlags: ['--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check'] });
+  const chrome = await launch({
+    chromeFlags: [
+      '--headless=new',
+      '--disable-gpu',
+      '--no-first-run',
+      '--no-default-browser-check',
+      ...containerChromiumArgs(),
+    ],
+  });
   try {
     const flags: Record<string, unknown> = {
       port: chrome.port,
