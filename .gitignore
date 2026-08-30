@@ -5,6 +5,7 @@ out/
 *.tsbuildinfo
 .env
 .env.local
+.data/
 .wpsa-work/
 *.tgz
 .DS_Store

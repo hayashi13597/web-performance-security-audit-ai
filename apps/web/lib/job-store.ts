@@ -7,6 +7,15 @@ import type {
   StageState,
 } from '@wpsa/engine';
 import { loadEngine } from '@/lib/engine';
+import {
+  deleteJobsOlderThan,
+  listRecentJobs,
+  readJob,
+  saveJob,
+  updateJobFields,
+  type JobPatch,
+  type JobSummary,
+} from './job-db';
 
 export interface ScanJob {
   id: string;
@@ -22,50 +31,73 @@ export interface ScanJob {
   createdAt: number;
 }
 
-// Map gắn trên globalThis để sống sót qua Next.js hot-reload ở môi trường dev
-const globalStore = globalThis as unknown as { __wpsaJobs?: Map<string, ScanJob> };
-const jobs: Map<string, ScanJob> = globalStore.__wpsaJobs ?? new Map();
-globalStore.__wpsaJobs = jobs;
+const configuredTtlHours = Number(process.env.WPSA_JOB_TTL_HOURS);
+
+/** Bản request an toàn để lưu DB: bỏ GitHub token (secret không xuống đĩa). */
+function redactRequest(request: ScanRequest): ScanRequest {
+  if (request.mode !== 'repo' || request.source.kind !== 'github' || !request.source.token) {
+    return request;
+  }
+  return { ...request, source: { kind: 'github', repoUrl: request.source.repoUrl } };
+}
 
 export function createScanJob(request: ScanRequest): ScanJob {
   const id = randomUUID().slice(0, 8);
   const { aiConfigFromEnv, runScan } = loadEngine();
   const job: ScanJob = {
     id,
-    request,
+    request: redactRequest(request),
     status: 'queued',
     stages: {},
     aiConfigured: aiConfigFromEnv() !== null,
     createdAt: Date.now(),
   };
-  jobs.set(id, job);
+  saveJob(job);
 
+  // Tiến độ từng stage giữ trong closure rồi ghi xuống DB (progress chỉ bắn khi đổi stage).
+  const stages: Partial<Record<ScanStage, StageState>> = {};
   const progress = (stage: ScanStage, status: StageState['status'], message?: string) => {
-    job.stages[stage] = { status, message };
-    job.status = 'running';
+    stages[stage] = { status, message };
+    updateJobFields(id, { stages: { ...stages }, status: 'running' });
   };
 
+  // request gốc (có token) chỉ tồn tại trong RAM của process này, không được persist.
   void runScan(request, id, progress)
     .then((report) => {
-      job.report = report;
-      job.status = 'done';
+      updateJobFields(id, { report, status: 'done' });
     })
     .catch((err: unknown) => {
-      job.status = 'error';
-      job.error = err instanceof Error ? err.message : String(err);
+      updateJobFields(id, {
+        status: 'error',
+        error: err instanceof Error ? err.message : String(err),
+      });
     });
 
   return job;
 }
 
 export function getScanJob(id: string): ScanJob | undefined {
-  return jobs.get(id);
+  return readJob(id);
 }
 
-/** Dọn job cũ hơn 6 tiếng (job chứa report + sourceDir tạm, không để phình vô hạn). */
+/** Ghi một phần trạng thái job xuống DB (dùng bởi progress callback và route /fix-preview). */
+export function updateScanJob(id: string, patch: JobPatch): void {
+  updateJobFields(id, patch);
+}
+
+/** Danh sách job gần nhất cho trang lịch sử (đã sắp mới nhất trước). */
+export function listRecentScans(limit: number): JobSummary[] {
+  return listRecentJobs(limit);
+}
+
+/** Nhãn đích scan để hiển thị (URL / repo / đường dẫn local). */
+export function jobTarget(request: ScanRequest): string {
+  if (request.mode === 'url') return request.url;
+  return request.source.kind === 'github' ? request.source.repoUrl : request.source.path;
+}
+
+/** Dọn job cũ hơn TTL (mặc định 6 tiếng — job chứa report + sourceDir tạm, không để phình vô hạn). */
 export function pruneOldJobs(): void {
-  const cutoff = Date.now() - 6 * 60 * 60 * 1000;
-  for (const [id, job] of jobs) {
-    if (job.createdAt < cutoff) jobs.delete(id);
-  }
+  const hours = Number.isFinite(configuredTtlHours) && configuredTtlHours > 0 ? configuredTtlHours : 6;
+  deleteJobsOlderThan(Date.now() - hours * 60 * 60 * 1000);
 }

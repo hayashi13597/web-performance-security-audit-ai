@@ -6,7 +6,7 @@
 
 **Scan a URL, a GitHub repo, or a local folder → detect wasteful re-renders, oversized bundles, memory leaks, and security & SEO violations → AI-generated fixes → a one-click Pull Request.**
 
-[![Node](https://img.shields.io/badge/node-%E2%89%A520-339933?logo=node.js&logoColor=white)](https://nodejs.org)
+[![Node](https://img.shields.io/badge/node-%E2%89%A522.13-339933?logo=node.js&logoColor=white)](https://nodejs.org)
 [![pnpm](https://img.shields.io/badge/pnpm-%E2%89%A59-F69220?logo=pnpm&logoColor=white)](https://pnpm.io)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
 [![Next.js](https://img.shields.io/badge/Next.js-15-black?logo=next.js)](https://nextjs.org)
@@ -98,9 +98,10 @@ A pnpm monorepo, TypeScript throughout.
 │   ├── app/page.tsx                 Scan form with 3 tabs: URL | GitHub repo | local folder
 │   ├── app/scan/[id]/page.tsx       Report: gauges, CWV, charts, findings, diff view
 │   ├── components/FolderPickerDialog.tsx  Folder browser dialog for local mode
-│   ├── lib/job-store.ts             In-memory job store (runs in background)
+│   ├── lib/job-store.ts             SQLite-backed job store (history survives restarts)
 │   └── API routes:
 │       ├── POST /api/scans                    Create a scan job (runs in background)
+│       ├── GET  /api/scans                    Recent scan history
 │       ├── GET  /api/scans/[id]               Status + report (poll ~1.5s)
 │       ├── POST /api/scans/[id]/fix-preview   AI-generate a fix preview (with diffs)
 │       ├── POST /api/scans/[id]/pull-request  Create a PR from the selected fixes
@@ -112,7 +113,7 @@ A pnpm monorepo, TypeScript throughout.
 
 | Component | Requirement |
 |---|---|
-| Node.js | ≥ 20 |
+| Node.js | ≥ 22.13 (`node:sqlite` built-in stores the scan history) |
 | pnpm | ≥ 9 |
 | Browser | Chrome or Edge installed (Lighthouse uses the system Chrome, no bundled download) |
 | OS | Developed and tested on Windows 10; the engine is pure Node, so macOS/Linux work too |
@@ -170,6 +171,10 @@ AI_BASE_URL=https://open.bigmodel.cn/api/paas/v4   # GLM; switch to api.openai.c
 AI_API_KEY=...
 AI_MODEL=glm-4.6
 PORT=3000
+
+# Optional — job store:
+#WPSA_DB_PATH=D:\path\to\wpsa-jobs.db   # default: apps/web/.data/wpsa-jobs.db
+#WPSA_JOB_TTL_HOURS=6                   # hours to keep finished jobs (default 6)
 ```
 
 Any **OpenAI-compatible** endpoint (`/chat/completions` + Bearer key) works.
@@ -198,6 +203,7 @@ Required PAT permissions:
 | Method | Endpoint | Description |
 |---|---|---|
 | `POST` | `/api/scans` | Create a scan job (runs in background) |
+| `GET` | `/api/scans` | Recent scan history (last 20 jobs) |
 | `GET` | `/api/scans/[id]` | Status + report (poll ~1.5s) |
 | `POST` | `/api/scans/[id]/fix-preview` | AI-generate a fix preview with diffs (requires an AI key) |
 | `POST` | `/api/scans/[id]/pull-request` | Create a PR from the selected fixes (requires a PAT) |
@@ -246,12 +252,12 @@ E2E verified: scanning `examples/leaky-app` (local + live) catches all 4 issue g
 | Creating a PR returns **404 Not Found** | Two common causes: (1) the base branch is mistyped / doesn't exist; (2) a fine-grained PAT missing *Contents* or *Pull requests* read/write, or the repo not in *Repository access* — GitHub returns 404 instead of 403. |
 | Downloading a repo fails to extract | The tarball exceeds the 200MB limit, or the repo URL is malformed. |
 | Component names in the chart are minified (`nZ`, `C`) | The target is a **production build** — React strips function names in prod. Scanning a dev build gives full names. |
-| Scan history disappears after a restart | Jobs are stored **in-memory** (MVP) — see the [Roadmap](#roadmap). |
+| Scan history is gone / an old job errors with "Server đã restart giữa chừng scan" | Jobs are stored in SQLite (`apps/web/.data/wpsa-jobs.db`) and survive restarts — jobs that were still running when the server stopped are marked as errored. Finished jobs are pruned after 6h (tune via `WPSA_JOB_TTL_HOURS`). |
 | The AI fix button doesn't appear | `AI_API_KEY` isn't set in `.env` — restart the app after adding it. |
 
 ## Roadmap
 
-- [ ] Persist jobs to SQLite instead of in-memory (keep history across restarts)
+- [x] Persist jobs to SQLite instead of in-memory (keep history across restarts)
 - [ ] GitHub App / OAuth instead of pasting a PAT
 - [ ] One-command Docker image
 - [ ] Standalone CLI (scan without the dashboard)

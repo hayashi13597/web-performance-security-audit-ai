@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getScanJob } from '@/lib/job-store';
+import { getScanJob, jobTarget } from '@/lib/job-store';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -11,15 +11,13 @@ export async function GET(
   const { id } = await params;
   const job = getScanJob(id);
   if (!job) {
-    return NextResponse.json({ error: 'Không tìm thấy job scan (có thể server đã restart)' }, { status: 404 });
+    return NextResponse.json(
+      { error: 'Không tìm thấy job scan (đã quá thời gian lưu trữ hoặc không tồn tại)' },
+      { status: 404 },
+    );
   }
 
-  const target =
-    job.request.mode === 'url'
-      ? job.request.url
-      : job.request.source.kind === 'github'
-        ? job.request.source.repoUrl
-        : job.request.source.path;
+  const target = jobTarget(job.request);
 
   return NextResponse.json({
     id: job.id,
